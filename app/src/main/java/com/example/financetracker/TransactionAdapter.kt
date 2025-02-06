@@ -1,12 +1,9 @@
 package com.example.financetracker
 
-import android.view.GestureDetector
 import android.view.LayoutInflater
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
-import android.widget.SeekBar
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.example.financetracker.database.entity.Transaction
@@ -79,6 +76,3 @@ class TransactionAdapter(
 
     fun getTransactionAt(position: Int): Transaction = transactions[position]
 }
-
-
-

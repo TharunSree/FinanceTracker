@@ -1,7 +1,6 @@
 package com.example.financetracker
 
 import android.Manifest
-import android.Manifest.permission.POST_NOTIFICATIONS
 import android.app.AlertDialog
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -25,6 +24,8 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.content.ContextCompat
+import androidx.core.view.GravityCompat
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -37,6 +38,7 @@ import com.example.financetracker.database.entity.Transaction
 import com.example.financetracker.ui.dialogs.TransactionDetailsDialog
 import com.example.financetracker.utils.MessageExtractor
 import com.example.financetracker.viewmodel.TransactionViewModel
+import com.google.android.material.navigation.NavigationView
 import com.google.gson.Gson
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -70,7 +72,7 @@ class MainActivity : AppCompatActivity(),
         arrayOf(
             Manifest.permission.RECEIVE_SMS,
             Manifest.permission.READ_SMS,
-            POST_NOTIFICATIONS
+            Manifest.permission.POST_NOTIFICATIONS
         )
     } else {
         arrayOf(
@@ -149,6 +151,9 @@ class MainActivity : AppCompatActivity(),
 
         // Handle intent extras for notifications
         handleIntentExtras(intent)
+
+        // Setup navigation drawer
+        setupNavigationDrawer()
     }
 
     private fun setupNotificationChannel() {
@@ -200,7 +205,6 @@ class MainActivity : AppCompatActivity(),
             .show()
     }
 
-
     private fun openAppSettings() {
         Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = android.net.Uri.fromParts("package", packageName, null)
@@ -233,7 +237,7 @@ class MainActivity : AppCompatActivity(),
         return when (permission) {
             Manifest.permission.RECEIVE_SMS -> "SMS Reception (for transaction tracking)"
             Manifest.permission.READ_SMS -> "SMS Reading (for transaction details)"
-            POST_NOTIFICATIONS -> "Notifications (for transaction alerts)"
+            Manifest.permission.POST_NOTIFICATIONS -> "Notifications (for transaction alerts)"
             else -> permission
         }
     }
@@ -512,8 +516,6 @@ class MainActivity : AppCompatActivity(),
         prefs.edit().putStringSet("patterns", newPatternsJson).apply()
     }
 
-
-
     override fun onDestroy() {
         super.onDestroy()
         try {
@@ -525,5 +527,25 @@ class MainActivity : AppCompatActivity(),
 
     enum class FilterPeriod {
         TODAY, WEEK, MONTH
+    }
+
+    private fun setupNavigationDrawer() {
+        val drawerLayout = findViewById<DrawerLayout>(R.id.drawerLayout)
+        val navigationView = findViewById<NavigationView>(R.id.navigationView)
+
+        navigationView.setNavigationItemSelectedListener { menuItem ->
+            when (menuItem.itemId) {
+                R.id.nav_dashboard -> {
+                    // Handle dashboard navigation
+                }
+                R.id.nav_transactions -> {
+                    val intent = Intent(this, TransactionsActivity::class.java)
+                    startActivity(intent)
+                }
+                // Handle other menu items if needed
+            }
+            drawerLayout.closeDrawer(GravityCompat.START)
+            true
+        }
     }
 }

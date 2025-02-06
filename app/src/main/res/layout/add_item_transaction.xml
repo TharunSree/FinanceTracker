@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <EditText
+        android:id="@+id/transactionNameInput"
+        android:layout_height="48dp"
+        android:layout_width="match_parent"
+        android:hint="Transaction Name" />
+
+    <EditText
+        android:id="@+id/transactionAmountInput"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="Transaction Amount"
+        android:inputType="numberDecimal" />
+
+    <EditText
+        android:id="@+id/transactionDateInput"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="Transaction Date" />
+
+    <Spinner
+        android:id="@+id/transactionCategorySpinner"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="Transaction Category" />
+
+    <Button
+        android:id="@+id/saveTransactionButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Save" />
+</LinearLayout>
