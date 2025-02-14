@@ -1,26 +1,25 @@
 package com.example.financetracker
 
-import android.app.ProgressDialog.show
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
-import android.widget.PopupMenu
+import android.widget.TableLayout
+import android.widget.TableRow
+import android.widget.TextView
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
+import androidx.appcompat.widget.PopupMenu
 import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.database.entity.Transaction
 import com.example.financetracker.viewmodel.TransactionViewModel
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-class TransactionsActivity : AppCompatActivity(),
-    TransactionAdapter.OnTransactionInteractionListener {
+class TransactionsActivity : AppCompatActivity() {
 
-    private lateinit var transactionAdapter: TransactionAdapter
+    private lateinit var transactionTableLayout: TableLayout
 
     private val transactionViewModel: TransactionViewModel by viewModels {
         val database = TransactionDatabase.getDatabase(this)
@@ -59,16 +58,9 @@ class TransactionsActivity : AppCompatActivity(),
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_transactions)
 
-        setupRecyclerView()
+        transactionTableLayout = findViewById(R.id.transactionTableLayout)
         setupAddTransactionButton()
         observeTransactions()
-    }
-
-    private fun setupRecyclerView() {
-        val recyclerView = findViewById<RecyclerView>(R.id.transactionRecyclerView)
-        recyclerView.layoutManager = LinearLayoutManager(this)
-        transactionAdapter = TransactionAdapter(emptyList(), this)
-        recyclerView.adapter = transactionAdapter
     }
 
     private fun setupAddTransactionButton() {
@@ -80,7 +72,72 @@ class TransactionsActivity : AppCompatActivity(),
 
     private fun observeTransactions() {
         transactionViewModel.transactions.observe(this) { transactions ->
-            transactionAdapter.updateData(transactions)
+            populateTable(transactions)
+        }
+    }
+
+    private fun populateTable(transactions: List<Transaction>) {
+        transactionTableLayout.removeViews(1, transactionTableLayout.childCount - 1) // Clear existing rows except the header
+
+        for (transaction in transactions) {
+            val tableRow = TableRow(this)
+
+            val nameTextView = TextView(this).apply {
+                text = transaction.name
+                setPadding(8, 8, 8, 8)
+            }
+
+            val amountTextView = TextView(this).apply {
+                text = "₹${transaction.amount}"
+                setPadding(8, 8, 8, 8)
+            }
+
+            val dateTextView = TextView(this).apply {
+                text = formatDate(transaction.date)
+                setPadding(8, 8, 8, 8)
+            }
+
+            val categoryTextView = TextView(this).apply {
+                text = transaction.category
+                setPadding(8, 8, 8, 8)
+            }
+
+            val actionsTextView = TextView(this).apply {
+                text = "Edit Delete"
+                setPadding(8, 8, 8, 8)
+                setOnClickListener {
+                    // Handle edit and delete actions
+                    showPopupMenu(transaction, this)
+                }
+            }
+
+            tableRow.addView(nameTextView)
+            tableRow.addView(amountTextView)
+            tableRow.addView(dateTextView)
+            tableRow.addView(categoryTextView)
+            tableRow.addView(actionsTextView)
+
+            transactionTableLayout.addView(tableRow)
+        }
+    }
+
+    private fun showPopupMenu(transaction: Transaction, view: TextView) {
+        PopupMenu(this, view).apply {
+            menuInflater.inflate(R.menu.transaction_options_menu, menu)
+            setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    R.id.action_edit -> {
+                        onEditTransaction(transaction)
+                        true
+                    }
+                    R.id.action_delete -> {
+                        onDeleteTransaction(transaction)
+                        true
+                    }
+                    else -> false
+                }
+            }
+            show()
         }
     }
 
@@ -93,41 +150,16 @@ class TransactionsActivity : AppCompatActivity(),
         }
     }
 
-    override fun onEditTransaction(transaction: Transaction) {
-        val editDialog = EditTransactionDialogFragment(transaction) { updatedTransaction ->
-            transactionViewModel.updateTransaction(updatedTransaction)
-        }
-        editDialog.show(supportFragmentManager, "EditTransactionDialog")
+    private fun formatDate(timestamp: Long): String {
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        return dateFormat.format(timestamp)
     }
 
-    override fun onDeleteTransaction(transaction: Transaction) {
+    private fun onEditTransaction(transaction: Transaction) {
+        // Handle edit transaction
+    }
+
+    private fun onDeleteTransaction(transaction: Transaction) {
         transactionViewModel.deleteTransaction(transaction)
-    }
-
-    override fun onLongPressTransaction(transaction: Transaction) {
-        val view = findViewById<RecyclerView>(R.id.transactionRecyclerView)
-            .findViewHolderForAdapterPosition(
-                transactionAdapter.getTransactions().indexOf(transaction)
-            )?.itemView ?: return
-
-        PopupMenu(this, view).apply {
-            menuInflater.inflate(R.menu.transaction_options_menu, menu)
-            setOnMenuItemClickListener { item ->
-                when (item.itemId) {
-                    R.id.action_edit -> {
-                        onEditTransaction(transaction)
-                        true
-                    }
-
-                    R.id.action_delete -> {
-                        onDeleteTransaction(transaction)
-                        true
-                    }
-
-                    else -> false
-                }
-            }
-            show()
-        }
     }
 }

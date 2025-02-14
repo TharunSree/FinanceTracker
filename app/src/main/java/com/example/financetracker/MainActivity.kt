@@ -8,10 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
 import android.view.Menu
@@ -29,9 +26,6 @@ import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.recyclerview.widget.ItemTouchHelper
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.database.TransactionPattern
 import com.example.financetracker.database.entity.Transaction
@@ -46,10 +40,8 @@ import java.util.Calendar
 import java.util.Locale
 
 class MainActivity : AppCompatActivity(),
-    TransactionAdapter.OnTransactionInteractionListener,
     TransactionDetailsDialog.TransactionDetailsListener {
 
-    private lateinit var transactionAdapter: TransactionAdapter
     private lateinit var smsBroadcastReceiver: SmsBroadcastReceiver
     private lateinit var messageExtractor: MessageExtractor
     private var currentTransaction: Transaction? = null
@@ -144,9 +136,7 @@ class MainActivity : AppCompatActivity(),
         setupPermissions()
         setupNotificationChannel()
         requestNotificationPermission()
-        setupRecyclerView()
         setupAddTransactionButton()
-        observeTransactions()
         setupObservers()
 
         // Handle intent extras for notifications
@@ -159,7 +149,7 @@ class MainActivity : AppCompatActivity(),
     private fun setupNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val transactionChannel = NotificationChannel(
-                "TRANSACTION_CHANNEL",
+                TRANSACTION_CHANNEL_ID,
                 "Transactions",
                 NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
@@ -170,7 +160,7 @@ class MainActivity : AppCompatActivity(),
             }
 
             val detailsChannel = NotificationChannel(
-                "DETAILS_REQUIRED_CHANNEL",
+                DETAILS_REQUIRED_CHANNEL_ID,
                 "Transaction Details Required",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
@@ -268,15 +258,6 @@ class MainActivity : AppCompatActivity(),
         registerReceiver(smsBroadcastReceiver, filter)
     }
 
-    private fun setupRecyclerView() {
-        val recyclerView = findViewById<RecyclerView>(R.id.transactionRecyclerView)
-        recyclerView.layoutManager = LinearLayoutManager(this)
-        transactionAdapter = TransactionAdapter(emptyList(), this)
-        recyclerView.adapter = transactionAdapter
-
-        setupSwipeToDelete(recyclerView)
-    }
-
     private fun setupAddTransactionButton() {
         findViewById<Button>(R.id.addTransactionButton).setOnClickListener {
             val intent = Intent(this, AddTransactionActivity::class.java)
@@ -284,122 +265,15 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
-    private fun observeTransactions() {
-        transactionViewModel.transactions.observe(this) { transactions ->
-            transactionAdapter.updateData(transactions)
-        }
-    }
-
-    private fun setupSwipeToDelete(recyclerView: RecyclerView) {
-        val itemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
-            0, ItemTouchHelper.LEFT
-        ) {
-            private val deleteIcon =
-                ContextCompat.getDrawable(this@MainActivity, R.drawable.ic_delete)!!
-            private val background = ColorDrawable(Color.RED)
-            private val intrinsicWidth = deleteIcon.intrinsicWidth
-            private val intrinsicHeight = deleteIcon.intrinsicHeight
-            private val paint = Paint().apply { color = Color.WHITE }
-
-            override fun onMove(
-                recyclerView: RecyclerView,
-                viewHolder: RecyclerView.ViewHolder,
-                target: RecyclerView.ViewHolder
-            ): Boolean = false
-
-            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
-                val transaction = transactionAdapter.getTransactionAt(viewHolder.adapterPosition)
-                transactionViewModel.deleteTransaction(transaction)
-                Toast.makeText(this@MainActivity, "Transaction deleted", Toast.LENGTH_SHORT).show()
-            }
-
-            override fun onChildDraw(
-                canvas: Canvas,
-                recyclerView: RecyclerView,
-                viewHolder: RecyclerView.ViewHolder,
-                dX: Float,
-                dY: Float,
-                actionState: Int,
-                isCurrentlyActive: Boolean
-            ) {
-                val itemView = viewHolder.itemView
-                val itemHeight = itemView.bottom - itemView.top
-
-                // Draw the red delete background
-                background.setBounds(
-                    itemView.right + dX.toInt(),
-                    itemView.top,
-                    itemView.right,
-                    itemView.bottom
-                )
-                background.draw(canvas)
-
-                // Calculate position of delete icon
-                val iconTop = itemView.top + (itemHeight - intrinsicHeight) / 2
-                val iconMargin = (itemHeight - intrinsicHeight) / 2
-                val iconLeft = itemView.right - iconMargin - intrinsicWidth
-                val iconRight = itemView.right - iconMargin
-                val iconBottom = iconTop + intrinsicHeight
-
-                // Draw the delete icon
-                deleteIcon.setBounds(iconLeft, iconTop, iconRight, iconBottom)
-                deleteIcon.draw(canvas)
-
-                super.onChildDraw(
-                    canvas, recyclerView, viewHolder,
-                    dX, dY, actionState, isCurrentlyActive
-                )
-            }
-        })
-
-        itemTouchHelper.attachToRecyclerView(recyclerView)
-    }
-
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.main_menu, menu)
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.filter_today -> {
-                transactionViewModel.loadTodayTransactions()
-                true
-            }
-
-            R.id.filter_week -> {
-                transactionViewModel.loadWeekTransactions()
-                true
-            }
-
-            R.id.filter_month -> {
-                transactionViewModel.loadMonthTransactions()
-                true
-            }
-
-            R.id.filter_all -> {
-                transactionViewModel.loadAllTransactions()
-                true
-            }
-
-            else -> super.onOptionsItemSelected(item)
-        }
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        handleIntentExtras(intent)
-    }
-
     private fun setupObservers() {
         transactionViewModel.transactions.observe(this) { transactions ->
-            transactionAdapter.updateData(transactions)
+            // Handle transactions if needed
         }
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 transactionViewModel.filteredTransactions.collect { filteredTransactions ->
-                    transactionAdapter.updateData(filteredTransactions)
+                    // Handle filtered transactions if needed
                     updateFilterStatus(filteredTransactions.size)
                 }
             }
@@ -438,43 +312,40 @@ class MainActivity : AppCompatActivity(),
         }
     }
 
-    override fun onEditTransaction(transaction: Transaction) {
-        val editDialog = EditTransactionDialogFragment(transaction) { updatedTransaction ->
-            transactionViewModel.updateTransaction(updatedTransaction)
-        }
-        editDialog.show(supportFragmentManager, "EditTransactionDialog")
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu)
+        return true
     }
 
-    override fun onDeleteTransaction(transaction: Transaction) {
-        transactionViewModel.deleteTransaction(transaction)
-        Toast.makeText(this, "Transaction deleted", Toast.LENGTH_SHORT).show()
-    }
-
-    override fun onLongPressTransaction(transaction: Transaction) {
-        val view = findViewById<RecyclerView>(R.id.transactionRecyclerView)
-            .findViewHolderForAdapterPosition(
-                transactionAdapter.getTransactions().indexOf(transaction)
-            )?.itemView ?: return
-
-        PopupMenu(this, view).apply {
-            menuInflater.inflate(R.menu.transaction_options_menu, menu)
-            setOnMenuItemClickListener { item ->
-                when (item.itemId) {
-                    R.id.action_edit -> {
-                        onEditTransaction(transaction)
-                        true
-                    }
-
-                    R.id.action_delete -> {
-                        onDeleteTransaction(transaction)
-                        true
-                    }
-
-                    else -> false
-                }
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.filter_today -> {
+                transactionViewModel.loadTodayTransactions()
+                true
             }
-            show()
+
+            R.id.filter_week -> {
+                transactionViewModel.loadWeekTransactions()
+                true
+            }
+
+            R.id.filter_month -> {
+                transactionViewModel.loadMonthTransactions()
+                true
+            }
+
+            R.id.filter_all -> {
+                transactionViewModel.loadAllTransactions()
+                true
+            }
+
+            else -> super.onOptionsItemSelected(item)
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntentExtras(intent)
     }
 
     // New methods for TransactionDetailsDialog
