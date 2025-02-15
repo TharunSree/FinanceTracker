@@ -14,15 +14,14 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
-import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -32,15 +31,15 @@ import com.example.financetracker.database.entity.Transaction
 import com.example.financetracker.ui.dialogs.TransactionDetailsDialog
 import com.example.financetracker.utils.MessageExtractor
 import com.example.financetracker.viewmodel.TransactionViewModel
-import com.google.android.material.navigation.NavigationView
 import com.google.gson.Gson
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 
-class MainActivity : AppCompatActivity(),
-    TransactionDetailsDialog.TransactionDetailsListener {
+class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetailsListener {
+
+    override fun getLayoutResourceId(): Int = R.layout.activity_main
 
     private lateinit var smsBroadcastReceiver: SmsBroadcastReceiver
     private lateinit var messageExtractor: MessageExtractor
@@ -71,18 +70,6 @@ class MainActivity : AppCompatActivity(),
             Manifest.permission.RECEIVE_SMS,
             Manifest.permission.READ_SMS
         )
-    }
-
-    private fun requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.POST_NOTIFICATIONS
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
-                requestPermissionsLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
-            }
-        }
     }
 
     private val requestPermissionsLauncher =
@@ -131,9 +118,9 @@ class MainActivity : AppCompatActivity(),
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
 
         setupPermissions()
+        setupStatisticsView()
         setupNotificationChannel()
         requestNotificationPermission()
         setupStatisticsButton()
@@ -141,15 +128,18 @@ class MainActivity : AppCompatActivity(),
 
         // Handle intent extras for notifications
         handleIntentExtras(intent)
+    }
 
-        // Setup navigation drawer
-        setupNavigationDrawer()
-
-        // Set the toolbar as the app bar for the activity
-        val toolbar = findViewById<Toolbar>(R.id.toolbar)
-        setSupportActionBar(toolbar)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.setHomeAsUpIndicator(R.drawable.ic_menu)
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPermissionsLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+            }
+        }
     }
 
     private fun setupNotificationChannel() {
@@ -201,6 +191,35 @@ class MainActivity : AppCompatActivity(),
             .show()
     }
 
+    private fun setupStatisticsView() {
+        transactionViewModel.transactionStatistics.observe(this) { stats ->
+            findViewById<TextView>(R.id.maxExpenseText).text =
+                getString(R.string.max_expense_format, stats.maxExpense)
+            findViewById<TextView>(R.id.minExpenseText).text =
+                getString(R.string.min_expense_format, stats.minExpense)
+
+            // Update category-wise statistics
+            val categoryStatsContainer = findViewById<LinearLayout>(R.id.categoryStatsContainer)
+            categoryStatsContainer.removeAllViews()
+
+            stats.categoryStats.forEach { (category, categoryStats) ->
+                val categoryView = layoutInflater.inflate(
+                    R.layout.item_category_stats,
+                    categoryStatsContainer,
+                    false
+                )
+
+                categoryView.findViewById<TextView>(R.id.categoryName).text = category
+                categoryView.findViewById<TextView>(R.id.categoryMaxExpense).text =
+                    getString(R.string.amount_format, categoryStats.maxExpense)
+                categoryView.findViewById<TextView>(R.id.categoryTotalExpense).text =
+                    getString(R.string.amount_format, categoryStats.totalExpense)
+
+                categoryStatsContainer.addView(categoryView)
+            }
+        }
+    }
+
     private fun openAppSettings() {
         Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = android.net.Uri.fromParts("package", packageName, null)
@@ -236,11 +255,6 @@ class MainActivity : AppCompatActivity(),
             Manifest.permission.POST_NOTIFICATIONS -> "Notifications (for transaction alerts)"
             else -> permission
         }
-    }
-
-    private fun formatDate(timestamp: Long): String {
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        return dateFormat.format(timestamp)
     }
 
     private fun setupPermissions() {
@@ -329,27 +343,18 @@ class MainActivity : AppCompatActivity(),
                 transactionViewModel.loadTodayTransactions()
                 true
             }
-
             R.id.filter_week -> {
                 transactionViewModel.loadWeekTransactions()
                 true
             }
-
             R.id.filter_month -> {
                 transactionViewModel.loadMonthTransactions()
                 true
             }
-
             R.id.filter_all -> {
                 transactionViewModel.loadAllTransactions()
                 true
             }
-
-            android.R.id.home -> {
-                findViewById<DrawerLayout>(R.id.drawerLayout).openDrawer(GravityCompat.START)
-                true
-            }
-
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -359,7 +364,6 @@ class MainActivity : AppCompatActivity(),
         handleIntentExtras(intent)
     }
 
-    // New methods for TransactionDetailsDialog
     fun showTransactionDetailsDialog(transaction: Transaction, messageBody: String) {
         currentTransaction = transaction
         currentMessageBody = messageBody
@@ -409,25 +413,5 @@ class MainActivity : AppCompatActivity(),
 
     enum class FilterPeriod {
         TODAY, WEEK, MONTH
-    }
-
-    private fun setupNavigationDrawer() {
-        val drawerLayout = findViewById<DrawerLayout>(R.id.drawerLayout)
-        val navigationView = findViewById<NavigationView>(R.id.navigationView)
-
-        navigationView.setNavigationItemSelectedListener { menuItem ->
-            when (menuItem.itemId) {
-                R.id.nav_dashboard -> {
-                    // Handle dashboard navigation
-                }
-                R.id.nav_transactions -> {
-                    val intent = Intent(this, TransactionsActivity::class.java)
-                    startActivity(intent)
-                }
-                // Handle other menu items if needed
-            }
-            drawerLayout.closeDrawer(GravityCompat.START)
-            true
-        }
     }
 }

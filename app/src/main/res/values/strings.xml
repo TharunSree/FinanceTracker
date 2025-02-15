@@ -47,4 +47,7 @@ Test Button
     <string name="sms_permission_rationale">SMS access is needed to automatically track your transactions.</string>
     <string name="permissions_required">Required Permissions</string>
     <string name="open_settings">Open Settings</string>
+    <string name="max_expense_format">Maximum Expense: ₹%.2f</string>
+    <string name="min_expense_format">Minimum Expense: ₹%.2f</string>
+    <string name="amount_format">₹%.2f</string>
 </resources>

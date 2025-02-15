@@ -1,5 +1,7 @@
 package com.example.financetracker.viewmodel
 
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.asLiveData
@@ -12,16 +14,68 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
+data class CategoryStatistics(
+    val maxExpense: Double,
+    val totalExpense: Double,
+    val transactionCount: Int
+)
+
+data class TransactionStatistics(
+    val maxExpense: Double,
+    val minExpense: Double,
+    val totalExpense: Double,
+    val categoryStats: Map<String, CategoryStatistics>
+)
+
 class TransactionViewModel(private val database: TransactionDatabase) : ViewModel() {
 
     private val transactionDao = database.transactionDao()
 
     // Using StateFlow for filtered transactions
     private val _filteredTransactions = MutableStateFlow<List<Transaction>>(emptyList())
+    private val _transactionStatistics = MutableLiveData<TransactionStatistics>()
+    val transactionStatistics: LiveData<TransactionStatistics> = _transactionStatistics
     val filteredTransactions: StateFlow<List<Transaction>> = _filteredTransactions
 
     // Using Flow for all transactions
     val transactions = transactionDao.getAllTransactions().asLiveData()
+
+    init {
+        updateStatistics()
+    }
+
+    private fun updateStatistics() {
+        viewModelScope.launch {
+            val allTransactions = transactions.value ?: return@launch
+
+            val categoryMap = mutableMapOf<String, MutableList<Transaction>>()
+            var maxExpense = Double.MIN_VALUE
+            var minExpense = Double.MAX_VALUE
+            var totalExpense = 0.0
+
+            allTransactions.forEach { transaction ->
+                categoryMap.getOrPut(transaction.category) { mutableListOf() }.add(transaction)
+                maxExpense = maxOf(maxExpense, transaction.amount)
+                minExpense = minOf(minExpense, transaction.amount)
+                totalExpense += transaction.amount
+            }
+
+            val categoryStats = categoryMap.mapValues { (_, transactions) ->
+                CategoryStatistics(
+                    maxExpense = transactions.maxOf { it.amount },
+                    totalExpense = transactions.sumOf { it.amount },
+                    transactionCount = transactions.size
+                )
+            }
+
+            _transactionStatistics.value = TransactionStatistics(
+                maxExpense = maxExpense,
+                minExpense = minExpense,
+                totalExpense = totalExpense,
+                categoryStats = categoryStats
+            )
+        }
+    }
 
     // Method to add a transaction
     fun addTransaction(transaction: Transaction) {
