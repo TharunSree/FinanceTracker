@@ -22,12 +22,12 @@
 
         <!-- Add your main content here -->
 
-        <!-- Add Transaction Button -->
+        <!-- Add Statistics Button -->
         <Button
-            android:id="@+id/addTransactionButton"
+            android:id="@+id/statisticsButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Add Transaction" />
+            android:text="View Statistics" />
     </LinearLayout>
 
     <!-- Navigation Drawer -->

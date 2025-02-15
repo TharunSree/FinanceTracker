@@ -80,7 +80,12 @@ class TransactionsActivity : AppCompatActivity() {
         transactionTableLayout.removeViews(1, transactionTableLayout.childCount - 1) // Clear existing rows except the header
 
         for (transaction in transactions) {
-            val tableRow = TableRow(this)
+            val tableRow = TableRow(this).apply {
+                setOnLongClickListener {
+                    showPopupMenu(transaction, this)
+                    true
+                }
+            }
 
             val nameTextView = TextView(this).apply {
                 text = transaction.name
@@ -102,26 +107,16 @@ class TransactionsActivity : AppCompatActivity() {
                 setPadding(8, 8, 8, 8)
             }
 
-            val actionsTextView = TextView(this).apply {
-                text = "Edit Delete"
-                setPadding(8, 8, 8, 8)
-                setOnClickListener {
-                    // Handle edit and delete actions
-                    showPopupMenu(transaction, this)
-                }
-            }
-
             tableRow.addView(nameTextView)
             tableRow.addView(amountTextView)
             tableRow.addView(dateTextView)
             tableRow.addView(categoryTextView)
-            tableRow.addView(actionsTextView)
 
             transactionTableLayout.addView(tableRow)
         }
     }
 
-    private fun showPopupMenu(transaction: Transaction, view: TextView) {
+    private fun showPopupMenu(transaction: Transaction, view: TableRow) {
         PopupMenu(this, view).apply {
             menuInflater.inflate(R.menu.transaction_options_menu, menu)
             setOnMenuItemClickListener { item ->
@@ -141,6 +136,14 @@ class TransactionsActivity : AppCompatActivity() {
         }
     }
 
+    private fun onEditTransaction(transaction: Transaction) {
+        // Handle edit transaction
+    }
+
+    private fun onDeleteTransaction(transaction: Transaction) {
+        transactionViewModel.deleteTransaction(transaction)
+    }
+
     private fun parseDateToLong(date: String): Long {
         return try {
             val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -153,13 +156,5 @@ class TransactionsActivity : AppCompatActivity() {
     private fun formatDate(timestamp: Long): String {
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         return dateFormat.format(timestamp)
-    }
-
-    private fun onEditTransaction(transaction: Transaction) {
-        // Handle edit transaction
-    }
-
-    private fun onDeleteTransaction(transaction: Transaction) {
-        transactionViewModel.deleteTransaction(transaction)
     }
 }

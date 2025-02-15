@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+        <!-- Disable the window action bar -->
+        <item name="windowActionBar">false</item>
+        <!-- Enable the toolbar instead -->
+        <item name="windowNoTitle">true</item>
+    </style>
+
     <style name="welcome_to_">
         <item name="android:textSize">36sp</item>
         <item name="android:textColor">#302F2F</item>
@@ -40,6 +47,5 @@
         <item name="android:textSize">20sp</item>
         <item name="android:textColor">#FFFFFF</item>
     </style>
-
 
 </resources>

@@ -22,7 +22,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Light"
+        android:theme="@style/Theme.FinanceTracker"
         tools:targetApi="31">
 
         <!-- Main Activity -->
@@ -30,7 +30,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:theme="@style/Theme.AppCompat.Light">
+            android:theme="@style/Theme.FinanceTracker">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -41,6 +41,9 @@
         <activity
             android:name=".AddTransactionActivity"
             android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".TransactionsActivity"
+            android:exported="true" />
 
         <!-- SMS Receiver -->
         <receiver

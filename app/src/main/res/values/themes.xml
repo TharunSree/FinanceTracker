@@ -13,6 +13,9 @@
         <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
         <!-- Text colors -->
         <item name="android:textColor">@color/colorText</item>
+        <item name="windowActionBar">false</item>
+        <!-- Enable the toolbar instead -->
+        <item name="windowNoTitle">true</item>
         <item name="android:textColorSecondary">@color/colorTextSecondary</item>
     </style>
 </resources>

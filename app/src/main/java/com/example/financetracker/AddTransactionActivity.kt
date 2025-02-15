@@ -1,6 +1,7 @@
 package com.example.financetracker
 
 import android.app.Activity
+import android.app.DatePickerDialog
 import android.content.Intent
 import android.os.Bundle
 import android.widget.ArrayAdapter
@@ -8,6 +9,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.Spinner
 import androidx.appcompat.app.AppCompatActivity
+import java.util.Calendar
 
 class AddTransactionActivity : AppCompatActivity() {
 
@@ -29,6 +31,22 @@ class AddTransactionActivity : AppCompatActivity() {
         ).also { adapter ->
             adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             categorySpinner.adapter = adapter
+        }
+
+        // Set up Date Picker for date input
+        val calendar = Calendar.getInstance()
+        val datePickerDialog = DatePickerDialog(
+            this,
+            { _, year, month, dayOfMonth ->
+                dateInput.setText("$year-${month + 1}-$dayOfMonth")
+            },
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        )
+
+        dateInput.setOnClickListener {
+            datePickerDialog.show()
         }
 
         saveButton.setOnClickListener {

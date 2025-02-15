@@ -19,7 +19,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.PopupMenu
+import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
@@ -136,7 +136,7 @@ class MainActivity : AppCompatActivity(),
         setupPermissions()
         setupNotificationChannel()
         requestNotificationPermission()
-        setupAddTransactionButton()
+        setupStatisticsButton()
         setupObservers()
 
         // Handle intent extras for notifications
@@ -144,6 +144,12 @@ class MainActivity : AppCompatActivity(),
 
         // Setup navigation drawer
         setupNavigationDrawer()
+
+        // Set the toolbar as the app bar for the activity
+        val toolbar = findViewById<Toolbar>(R.id.toolbar)
+        setSupportActionBar(toolbar)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.setHomeAsUpIndicator(R.drawable.ic_menu)
     }
 
     private fun setupNotificationChannel() {
@@ -258,10 +264,10 @@ class MainActivity : AppCompatActivity(),
         registerReceiver(smsBroadcastReceiver, filter)
     }
 
-    private fun setupAddTransactionButton() {
-        findViewById<Button>(R.id.addTransactionButton).setOnClickListener {
-            val intent = Intent(this, AddTransactionActivity::class.java)
-            addTransactionLauncher.launch(intent)
+    private fun setupStatisticsButton() {
+        findViewById<Button>(R.id.statisticsButton).setOnClickListener {
+            val intent = Intent(this, StatisticsActivity::class.java)
+            startActivity(intent)
         }
     }
 
@@ -336,6 +342,11 @@ class MainActivity : AppCompatActivity(),
 
             R.id.filter_all -> {
                 transactionViewModel.loadAllTransactions()
+                true
+            }
+
+            android.R.id.home -> {
+                findViewById<DrawerLayout>(R.id.drawerLayout).openDrawer(GravityCompat.START)
                 true
             }
 
