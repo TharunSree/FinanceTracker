@@ -1,5 +1,6 @@
 package com.example.financetracker
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.view.MenuItem
@@ -29,33 +30,33 @@ class TransactionsActivity : BaseActivity() {
         TransactionViewModel.Factory(database)
     }
 
-    private val addTransactionLauncher: ActivityResultLauncher<Intent> =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == RESULT_OK) {
-                result.data?.let { data ->
-                    try {
-                        val name = data.getStringExtra("name")
-                            ?: throw IllegalArgumentException("Name is required")
-                        val amount = data.getDoubleExtra("amount", 0.0)
-                        val date = data.getStringExtra("date")
-                            ?: throw IllegalArgumentException("Date is required")
-                        val category = data.getStringExtra("category") ?: "Uncategorized"
+    private val addTransactionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.let { data ->
+                val id = data.getIntExtra("id", 0)
+                val name = data.getStringExtra("name") ?: ""
+                val amount = data.getDoubleExtra("amount", 0.0)
+                val date = data.getLongExtra("date", System.currentTimeMillis())
+                val category = data.getStringExtra("category") ?: ""
 
-                        val transaction = Transaction(
-                            id = 0,
-                            name = name,
-                            amount = amount,
-                            date = parseDateToLong(date),
-                            category = category
-                        )
+                val transaction = Transaction(
+                    id = id,
+                    name = name,
+                    amount = amount,
+                    date = date,
+                    category = category
+                )
 
-                        transactionViewModel.addTransaction(transaction)
-                    } catch (e: Exception) {
-                        // Handle error
-                    }
+                if (id != 0) {
+                    transactionViewModel.updateTransaction(transaction)
+                } else {
+                    transactionViewModel.addTransaction(transaction)
                 }
             }
         }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -158,13 +159,13 @@ class TransactionsActivity : BaseActivity() {
             putExtra("TRANSACTION_ID", transaction.id)
             putExtra("TRANSACTION_NAME", transaction.name)
             putExtra("TRANSACTION_AMOUNT", transaction.amount)
-            putExtra("TRANSACTION_DATE", transaction.date) // Pass the Long timestamp directly
+            putExtra("TRANSACTION_DATE", transaction.date) // Pass as Long timestamp
             putExtra("TRANSACTION_CATEGORY", transaction.category)
         }
         addTransactionLauncher.launch(intent)
     }
 
-    private fun onDeleteTransaction(transaction: Transaction) {
+        private fun onDeleteTransaction(transaction: Transaction) {
         transactionViewModel.deleteTransaction(transaction)
     }
 

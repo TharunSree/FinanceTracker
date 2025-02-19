@@ -15,7 +15,6 @@ import java.util.Calendar
 import java.util.Locale
 
 class AddTransactionActivity : AppCompatActivity() {
-    private lateinit var dateInput: EditText
     private lateinit var calendar: Calendar
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
@@ -25,7 +24,7 @@ class AddTransactionActivity : AppCompatActivity() {
 
         val nameInput = findViewById<EditText>(R.id.transactionNameInput)
         val amountInput = findViewById<EditText>(R.id.transactionAmountInput)
-        dateInput = findViewById(R.id.transactionDateInput)
+        val dateInput = findViewById<EditText>(R.id.transactionDateInput)
         val categorySpinner = findViewById<Spinner>(R.id.transactionCategorySpinner)
         val saveButton = findViewById<Button>(R.id.saveTransactionButton)
 
@@ -33,27 +32,53 @@ class AddTransactionActivity : AppCompatActivity() {
         calendar = Calendar.getInstance()
 
         // Set up the Spinner for categories
-        ArrayAdapter.createFromResource(
-            this,
-            R.array.transaction_categories,
-            android.R.layout.simple_spinner_item
-        ).also { adapter ->
-            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-            categorySpinner.adapter = adapter
+        val categories = resources.getStringArray(R.array.transaction_categories)
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, categories)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        categorySpinner.adapter = adapter
+
+        // Handle edit mode
+        val editMode = intent.getBooleanExtra("EDIT_MODE", false)
+        var transactionId = 0
+
+        if (editMode) {
+            // Set title for edit mode
+            title = "Edit Transaction"
+
+            // Get transaction details from intent
+            transactionId = intent.getIntExtra("TRANSACTION_ID", 0)
+            nameInput.setText(intent.getStringExtra("TRANSACTION_NAME"))
+            amountInput.setText(intent.getDoubleExtra("TRANSACTION_AMOUNT", 0.0).toString())
+
+            // Handle date
+            val timestamp = intent.getLongExtra("TRANSACTION_DATE", System.currentTimeMillis())
+            calendar.timeInMillis = timestamp
+            dateInput.setText(dateFormat.format(calendar.time))
+
+            // Set category
+            val category = intent.getStringExtra("TRANSACTION_CATEGORY")
+            val categoryPosition = categories.indexOf(category)
+            if (categoryPosition != -1) {
+                categorySpinner.setSelection(categoryPosition)
+            }
+        } else {
+            title = "Add Transaction"
+            // Set current date for new transactions
+            dateInput.setText(dateFormat.format(calendar.time))
         }
 
-        // Set initial date
-        updateDateInView()
+        // Make date field read-only
+        dateInput.isFocusable = false
+        dateInput.isFocusableInTouchMode = false
 
         // Set up Date Picker
-        val dateSetListener = DatePickerDialog.OnDateSetListener { _, year, monthOfYear, dayOfMonth ->
+        val dateSetListener = DatePickerDialog.OnDateSetListener { _, year, month, dayOfMonth ->
             calendar.set(Calendar.YEAR, year)
-            calendar.set(Calendar.MONTH, monthOfYear)
+            calendar.set(Calendar.MONTH, month)
             calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
-            updateDateInView()
+            dateInput.setText(dateFormat.format(calendar.time))
         }
 
-        // Show DatePickerDialog when clicking the date field
         dateInput.setOnClickListener {
             DatePickerDialog(
                 this,
@@ -79,17 +104,14 @@ class AddTransactionActivity : AppCompatActivity() {
             }
 
             val data = Intent().apply {
+                putExtra("id", transactionId)
                 putExtra("name", nameInput.text.toString())
                 putExtra("amount", amount)
-                putExtra("date", dateInput.text.toString())
+                putExtra("date", calendar.timeInMillis)
                 putExtra("category", categorySpinner.selectedItem.toString())
             }
             setResult(Activity.RESULT_OK, data)
             finish()
         }
-    }
-
-    private fun updateDateInView() {
-        dateInput.setText(dateFormat.format(calendar.time))
     }
 }
