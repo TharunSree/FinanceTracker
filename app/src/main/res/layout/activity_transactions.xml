@@ -35,25 +35,25 @@
                     <TableRow android:background="@color/header_background">
                         <TextView
                             style="@style/TableHeaderStyle"
-                            android:layout_width="0dp"
+                            android:layout_width="wrap_content"
                             android:layout_weight="1"
                             android:text="Name" />
 
                         <TextView
                             style="@style/TableHeaderStyle"
-                            android:layout_width="0dp"
+                            android:layout_width="wrap_content"
                             android:layout_weight="1"
                             android:text="Amount" />
 
                         <TextView
                             style="@style/TableHeaderStyle"
-                            android:layout_width="0dp"
+                            android:layout_width="wrap_content"
                             android:layout_weight="1"
                             android:text="Date" />
 
                         <TextView
                             style="@style/TableHeaderStyle"
-                            android:layout_width="0dp"
+                            android:layout_width="wrap_content"
                             android:layout_weight="1"
                             android:text="Category" />
                     </TableRow>
