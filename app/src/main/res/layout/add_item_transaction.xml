@@ -22,7 +22,10 @@
         android:id="@+id/transactionDateInput"
         android:layout_width="match_parent"
         android:layout_height="48dp"
-        android:hint="Transaction Date" />
+        android:hint="Transaction Date"
+        android:focusable="false"
+        android:clickable="true"
+        android:inputType="none" />
 
     <Spinner
         android:id="@+id/transactionCategorySpinner"

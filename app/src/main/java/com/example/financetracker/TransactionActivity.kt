@@ -158,7 +158,7 @@ class TransactionsActivity : BaseActivity() {
             putExtra("TRANSACTION_ID", transaction.id)
             putExtra("TRANSACTION_NAME", transaction.name)
             putExtra("TRANSACTION_AMOUNT", transaction.amount)
-            putExtra("TRANSACTION_DATE", formatDate(transaction.date))
+            putExtra("TRANSACTION_DATE", transaction.date) // Pass the Long timestamp directly
             putExtra("TRANSACTION_CATEGORY", transaction.category)
         }
         addTransactionLauncher.launch(intent)
