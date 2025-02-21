@@ -42,7 +42,7 @@
             android:name=".AddTransactionActivity"
             android:parentActivityName=".MainActivity" />
         <activity
-            android:name=".TransactionsActivity"
+            android:name=".TransactionActivity"
             android:exported="true" />
         <activity android:name=".LoginActivity" />
 

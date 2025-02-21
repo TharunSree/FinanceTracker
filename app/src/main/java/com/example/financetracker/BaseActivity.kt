@@ -12,7 +12,7 @@ import com.google.firebase.auth.FirebaseAuth
 
 abstract class BaseActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener {
 
-    protected open lateinit var drawerLayout: DrawerLayout
+    private lateinit var drawerLayout: DrawerLayout
     private lateinit var auth: FirebaseAuth
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,7 +48,7 @@ abstract class BaseActivity : AppCompatActivity(), NavigationView.OnNavigationIt
             }
             R.id.nav_transactions -> {
                 // Handle transactions navigation
-                val intent = Intent(this, TransactionsActivity::class.java)
+                val intent = Intent(this, TransactionActivity::class.java)
                 startActivity(intent)
             }
             R.id.nav_settings -> {

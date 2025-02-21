@@ -8,7 +8,6 @@ import android.widget.Button
 import android.widget.TableLayout
 import android.widget.TableRow
 import android.widget.TextView
-import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.widget.PopupMenu
@@ -19,7 +18,7 @@ import com.example.financetracker.viewmodel.TransactionViewModel
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-class TransactionsActivity : BaseActivity() {
+class TransactionActivity : BaseActivity() {
 
     override fun getLayoutResourceId(): Int = R.layout.activity_transactions
 
@@ -177,6 +176,7 @@ class TransactionsActivity : BaseActivity() {
             System.currentTimeMillis()
         }
     }
+
 
     private fun formatDate(timestamp: Long): String {
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())

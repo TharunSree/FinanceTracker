@@ -54,7 +54,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     private var currentMessageBody: String? = null
     private lateinit var auth: FirebaseAuth
     private lateinit var firestore: FirebaseFirestore
-    override lateinit var drawerLayout: DrawerLayout
+    private lateinit var drawerLayout: DrawerLayout
     private lateinit var navView: NavigationView
     private lateinit var toggle: ActionBarDrawerToggle
 
@@ -130,7 +130,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
 
         // Initialize Firebase Auth and Firestore
         auth = FirebaseAuth.getInstance()
@@ -141,14 +140,16 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         updateUI(currentUser)
 
         // Setup navigation drawer
-        drawerLayout = findViewById(R.id.drawer_layout)
+        /*drawerLayout = findViewById(R.id.drawer_layout)
         navView = findViewById(R.id.nav_view)
         toggle = ActionBarDrawerToggle(this, drawerLayout, R.string.navigation_drawer_open, R.string.navigation_drawer_close)
         drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
 
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        navView.setNavigationItemSelectedListener(this)
+        navView.setNavigationItemSelectedListener(this)*/
+
+        setupDrawerToggle()
 
         // Other initialization code...
         setupPermissions()
@@ -160,6 +161,12 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
         // Handle intent extras for notifications
         handleIntentExtras(intent)
+    }
+
+    private fun setupDrawerToggle() {
+        toggle = ActionBarDrawerToggle(this, drawerLayout, R.string.navigation_drawer_open, R.string.navigation_drawer_close)
+        drawerLayout.addDrawerListener(toggle)
+        toggle.syncState()
     }
 
     private fun updateUI(user: FirebaseUser?) {
