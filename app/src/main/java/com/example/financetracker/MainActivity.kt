@@ -54,8 +54,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     private var currentMessageBody: String? = null
     private lateinit var auth: FirebaseAuth
     private lateinit var firestore: FirebaseFirestore
-    private lateinit var drawerLayout: DrawerLayout
-    private lateinit var navView: NavigationView
     private lateinit var toggle: ActionBarDrawerToggle
 
     private val transactionViewModel: TransactionViewModel by viewModels {
@@ -139,16 +137,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         val currentUser = auth.currentUser
         updateUI(currentUser)
 
-        // Setup navigation drawer
-        /*drawerLayout = findViewById(R.id.drawer_layout)
-        navView = findViewById(R.id.nav_view)
-        toggle = ActionBarDrawerToggle(this, drawerLayout, R.string.navigation_drawer_open, R.string.navigation_drawer_close)
-        drawerLayout.addDrawerListener(toggle)
-        toggle.syncState()
-
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        navView.setNavigationItemSelectedListener(this)*/
-
+        // Setup navigation drawer toggle
         setupDrawerToggle()
 
         // Other initialization code...
@@ -164,6 +153,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     }
 
     private fun setupDrawerToggle() {
+        // Initialize the toggle
         toggle = ActionBarDrawerToggle(this, drawerLayout, R.string.navigation_drawer_open, R.string.navigation_drawer_close)
         drawerLayout.addDrawerListener(toggle)
         toggle.syncState()

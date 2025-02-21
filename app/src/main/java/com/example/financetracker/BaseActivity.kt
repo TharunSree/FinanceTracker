@@ -12,7 +12,7 @@ import com.google.firebase.auth.FirebaseAuth
 
 abstract class BaseActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener {
 
-    private lateinit var drawerLayout: DrawerLayout
+    protected lateinit var drawerLayout: DrawerLayout
     private lateinit var auth: FirebaseAuth
 
     override fun onCreate(savedInstanceState: Bundle?) {

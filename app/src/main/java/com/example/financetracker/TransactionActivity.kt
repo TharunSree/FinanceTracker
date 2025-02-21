@@ -59,6 +59,7 @@ class TransactionActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_transactions)
 
         transactionTableLayout = findViewById(R.id.transactionTableLayout)
         setupAddTransactionButton()
@@ -164,7 +165,7 @@ class TransactionActivity : BaseActivity() {
         addTransactionLauncher.launch(intent)
     }
 
-        private fun onDeleteTransaction(transaction: Transaction) {
+    private fun onDeleteTransaction(transaction: Transaction) {
         transactionViewModel.deleteTransaction(transaction)
     }
 
@@ -176,7 +177,6 @@ class TransactionActivity : BaseActivity() {
             System.currentTimeMillis()
         }
     }
-
 
     private fun formatDate(timestamp: Long): String {
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
