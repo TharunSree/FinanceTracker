@@ -36,6 +36,9 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.firestore.FirebaseFirestore
 
 class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetailsListener {
 
@@ -45,6 +48,8 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     private lateinit var messageExtractor: MessageExtractor
     private var currentTransaction: Transaction? = null
     private var currentMessageBody: String? = null
+    private lateinit var auth: FirebaseAuth
+    private lateinit var firestore: FirebaseFirestore
 
     private val transactionViewModel: TransactionViewModel by viewModels {
         val database = TransactionDatabase.getDatabase(this)
@@ -118,6 +123,15 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+//        setContentView(R.layout.activity_main)
+
+        // Initialize Firebase Auth and Firestore
+        auth = FirebaseAuth.getInstance()
+        firestore = FirebaseFirestore.getInstance()
+
+        // Check if user is signed in (non-null) and update UI accordingly.
+        val currentUser = auth.currentUser
+        updateUI(currentUser)
 
         setupPermissions()
         setupStatisticsView()
@@ -128,6 +142,17 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
         // Handle intent extras for notifications
         handleIntentExtras(intent)
+    }
+
+    private fun updateUI(user: FirebaseUser?) {
+        if (user != null) {
+            // User is signed in, proceed to the main functionality
+        } else {
+            // No user is signed in, redirect to LoginActivity
+            val intent = Intent(this, LoginActivity::class.java)
+            startActivity(intent)
+            finish()
+        }
     }
 
     private fun requestNotificationPermission() {
@@ -246,6 +271,11 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                 showTransactionDetailsDialog(transaction, it)
             }
         }
+        if (intent.getBooleanExtra("SHOW_TRANSACTION_DIALOG", false)) {
+            val message = intent.getStringExtra("TRANSACTION_MESSAGE")
+            val amount = intent.getDoubleExtra("TRANSACTION_AMOUNT", 0.0)
+            // Use Firestore to handle transaction dialog if necessary
+        }
     }
 
     private fun getPermissionDescription(permission: String): String {
@@ -343,18 +373,22 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                 transactionViewModel.loadTodayTransactions()
                 true
             }
+
             R.id.filter_week -> {
                 transactionViewModel.loadWeekTransactions()
                 true
             }
+
             R.id.filter_month -> {
                 transactionViewModel.loadMonthTransactions()
                 true
             }
+
             R.id.filter_all -> {
                 transactionViewModel.loadAllTransactions()
                 true
             }
+
             else -> super.onOptionsItemSelected(item)
         }
     }
