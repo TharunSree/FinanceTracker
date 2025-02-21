@@ -39,8 +39,12 @@ import java.util.Locale
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
+import androidx.appcompat.app.ActionBarDrawerToggle
+import androidx.drawerlayout.widget.DrawerLayout
+import com.google.android.material.navigation.NavigationView
 
-class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetailsListener {
+class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetailsListener,
+    NavigationView.OnNavigationItemSelectedListener {
 
     override fun getLayoutResourceId(): Int = R.layout.activity_main
 
@@ -50,6 +54,9 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     private var currentMessageBody: String? = null
     private lateinit var auth: FirebaseAuth
     private lateinit var firestore: FirebaseFirestore
+    override lateinit var drawerLayout: DrawerLayout
+    private lateinit var navView: NavigationView
+    private lateinit var toggle: ActionBarDrawerToggle
 
     private val transactionViewModel: TransactionViewModel by viewModels {
         val database = TransactionDatabase.getDatabase(this)
@@ -123,7 +130,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-//        setContentView(R.layout.activity_main)
+        setContentView(R.layout.activity_main)
 
         // Initialize Firebase Auth and Firestore
         auth = FirebaseAuth.getInstance()
@@ -133,6 +140,17 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         val currentUser = auth.currentUser
         updateUI(currentUser)
 
+        // Setup navigation drawer
+        drawerLayout = findViewById(R.id.drawer_layout)
+        navView = findViewById(R.id.nav_view)
+        toggle = ActionBarDrawerToggle(this, drawerLayout, R.string.navigation_drawer_open, R.string.navigation_drawer_close)
+        drawerLayout.addDrawerListener(toggle)
+        toggle.syncState()
+
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        navView.setNavigationItemSelectedListener(this)
+
+        // Other initialization code...
         setupPermissions()
         setupStatisticsView()
         setupNotificationChannel()
@@ -368,29 +386,10 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.filter_today -> {
-                transactionViewModel.loadTodayTransactions()
-                true
-            }
-
-            R.id.filter_week -> {
-                transactionViewModel.loadWeekTransactions()
-                true
-            }
-
-            R.id.filter_month -> {
-                transactionViewModel.loadMonthTransactions()
-                true
-            }
-
-            R.id.filter_all -> {
-                transactionViewModel.loadAllTransactions()
-                true
-            }
-
-            else -> super.onOptionsItemSelected(item)
+        if (toggle.onOptionsItemSelected(item)) {
+            return true
         }
+        return super.onOptionsItemSelected(item)
     }
 
     override fun onNewIntent(intent: Intent) {

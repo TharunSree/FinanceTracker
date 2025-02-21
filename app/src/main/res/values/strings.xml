@@ -10,32 +10,32 @@
         <item>Others</item>
     </string-array>
     <string name="welcome_to">
-Welcome To
-</string>
+        Welcome To
+    </string>
     <string name="finance_tra">
-Finance Tracker
-</string>
+        Finance Tracker
+    </string>
     <string name="meals">
-Meals
-</string>
+        Meals
+    </string>
     <string name="food">
-Food
-</string>
+        Food
+    </string>
     <string name="date">
-12-01-2025
-</string>
+        12-01-2025
+    </string>
     <string name="rs_70">
-Rs. 70
-</string>
+        Rs. 70
+    </string>
     <string name="get_started">
-Get Started
-</string>
+        Get Started
+    </string>
     <string name="add_transac">
-Add Transaction
-</string>
+        Add Transaction
+    </string>
     <string name="test_button">
-Test Button
-</string>
+        Test Button
+    </string>
     <string name="edit_transaction">Edit Transaction</string>
     <string name="merchant_name">Merchant Name</string>
     <string name="category">Category</string>
@@ -50,4 +50,8 @@ Test Button
     <string name="max_expense_format">Maximum Expense: ₹%.2f</string>
     <string name="min_expense_format">Minimum Expense: ₹%.2f</string>
     <string name="amount_format">₹%.2f</string>
+
+    <!-- Add these strings for navigation drawer -->
+    <string name="navigation_drawer_open">Open navigation drawer</string>
+    <string name="navigation_drawer_close">Close navigation drawer</string>
 </resources>
