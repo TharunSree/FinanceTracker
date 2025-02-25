@@ -123,6 +123,9 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                         )
 
                         transactionViewModel.addTransaction(transaction)
+
+                        // Add transaction to Firestore
+                        addTransactionToFirestore(transaction)
                     } catch (e: Exception) {
                         Toast.makeText(
                             this,
@@ -133,6 +136,18 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                 }
             }
         }
+
+    private fun addTransactionToFirestore(transaction: Transaction) {
+        val userId = auth.currentUser?.uid ?: return
+        firestore.collection("users").document(userId).collection("transactions")
+            .add(transaction)
+            .addOnSuccessListener {
+                Toast.makeText(this, "Transaction added to Firestore", Toast.LENGTH_SHORT).show()
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Error adding transaction to Firestore: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -160,11 +175,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         setSupportActionBar(binding.toolbar)
 
         val toggle = ActionBarDrawerToggle(
-            this,
-            binding.drawerLayout,
-            binding.toolbar,
-            R.string.navigation_drawer_open,
-            R.string.navigation_drawer_close
+            this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close
         )
         binding.drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
@@ -189,12 +200,28 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     }
 
     private fun updateUI(user: FirebaseUser?) {
-        // Update UI based on user state
         if (user == null) {
+            // Clear transactions from local database when user logs out
+            transactionViewModel.clearTransactions()
             val intent = Intent(this, LoginActivity::class.java)
             startActivity(intent)
             finish()
+        } else {
+            // Fetch user transactions from Firestore when user logs in
+            fetchUserTransactions(user.uid)
         }
+    }
+
+    private fun fetchUserTransactions(userId: String) {
+        firestore.collection("users").document(userId).collection("transactions")
+            .get()
+            .addOnSuccessListener { result ->
+                val transactions = result.toObjects(Transaction::class.java)
+                transactionViewModel.setTransactions(transactions)
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Error fetching transactions: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
     }
 
     private fun requestNotificationPermission() {
@@ -320,7 +347,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         if (intent.getBooleanExtra("SHOW_TRANSACTION_DIALOG", false)) {
             val message = intent.getStringExtra("TRANSACTION_MESSAGE")
             val amount = intent.getDoubleExtra("TRANSACTION_AMOUNT", 0.0)
-            // Use Firestore to handle transaction dialog if necessary
         }
     }
 

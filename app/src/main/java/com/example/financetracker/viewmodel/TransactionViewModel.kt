@@ -81,6 +81,7 @@ class TransactionViewModel(private val database: TransactionDatabase) : ViewMode
     fun addTransaction(transaction: Transaction) {
         viewModelScope.launch {
             transactionDao.insertTransaction(transaction)
+            updateStatistics()
         }
     }
 
@@ -88,6 +89,7 @@ class TransactionViewModel(private val database: TransactionDatabase) : ViewMode
     fun deleteTransaction(transaction: Transaction) {
         viewModelScope.launch {
             transactionDao.deleteTransaction(transaction)
+            updateStatistics()
         }
     }
 
@@ -95,6 +97,24 @@ class TransactionViewModel(private val database: TransactionDatabase) : ViewMode
     fun updateTransaction(transaction: Transaction) {
         viewModelScope.launch {
             transactionDao.updateTransaction(transaction)
+            updateStatistics()
+        }
+    }
+
+    // Method to clear all transactions (used when user logs out)
+    fun clearTransactions() {
+        viewModelScope.launch {
+            transactionDao.clearTransactions()
+            updateStatistics()
+        }
+    }
+
+    // Method to set transactions (used when fetching user transactions from Firestore)
+    fun setTransactions(transactions: List<Transaction>) {
+        viewModelScope.launch {
+            transactionDao.clearTransactions()
+            transactions.forEach { transactionDao.insertTransaction(it) }
+            updateStatistics()
         }
     }
 

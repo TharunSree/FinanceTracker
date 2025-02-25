@@ -13,6 +13,7 @@ import androidx.core.app.NotificationCompat
 import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.database.entity.Transaction
 import com.example.financetracker.utils.MessageExtractor
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -20,6 +21,7 @@ import kotlinx.coroutines.launch
 class SmsBroadcastReceiver : BroadcastReceiver() {
 
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
+    private val firestore = FirebaseFirestore.getInstance()
 
     companion object {
         private const val TAG = "SmsBroadcastReceiver"
@@ -73,9 +75,13 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
                         description = details.description
                     )
 
-                    // Save to database
+                    // Save to Room database
                     val database = TransactionDatabase.getDatabase(context)
                     database.transactionDao().insertTransaction(transaction)
+                    Log.d(TAG, "Transaction successfully added to the Room database")
+
+                    // Save to Firestore
+                    addTransactionToFirestore(transaction)
 
                     // Show appropriate notification
                     if (transaction.name == "Unknown Merchant" || transaction.category.isBlank()) {
@@ -92,6 +98,17 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
                 showFailureNotification(context, messageBody)
             }
         }
+    }
+
+    private fun addTransactionToFirestore(transaction: Transaction) {
+        firestore.collection("transactions")
+            .add(transaction)
+            .addOnSuccessListener {
+                Log.d(TAG, "Transaction successfully added to Firestore")
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Error adding transaction to Firestore: ${e.message}")
+            }
     }
 
     private fun createNotificationChannels(context: Context) {

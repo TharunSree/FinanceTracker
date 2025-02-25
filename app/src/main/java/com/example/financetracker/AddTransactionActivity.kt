@@ -10,6 +10,8 @@ import android.widget.EditText
 import android.widget.Spinner
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.example.financetracker.database.entity.Transaction
+import com.google.firebase.firestore.FirebaseFirestore
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -17,6 +19,7 @@ import java.util.Locale
 class AddTransactionActivity : AppCompatActivity() {
     private lateinit var calendar: Calendar
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    private val firestore = FirebaseFirestore.getInstance()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -108,17 +111,41 @@ class AddTransactionActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
+            val transaction = Transaction(
+                id = transactionId,
+                name = nameInput.text.toString(),
+                amount = amount,
+                date = calendar.timeInMillis,
+                category = categorySpinner.selectedItem.toString(),
+                merchant = merchantInput.text.toString(),
+                description = descriptionInput.text.toString()
+            )
+
+            // Save transaction to Firestore
+            addTransactionToFirestore(transaction)
+
             val data = Intent().apply {
-                putExtra("id", transactionId)
-                putExtra("name", nameInput.text.toString())
-                putExtra("amount", amount)
-                putExtra("date", calendar.timeInMillis)
-                putExtra("category", categorySpinner.selectedItem.toString())
-                putExtra("merchant", merchantInput.text.toString())
-                putExtra("description", descriptionInput.text.toString())
+                putExtra("id", transaction.id)
+                putExtra("name", transaction.name)
+                putExtra("amount", transaction.amount)
+                putExtra("date", transaction.date)
+                putExtra("category", transaction.category)
+                putExtra("merchant", transaction.merchant)
+                putExtra("description", transaction.description)
             }
             setResult(Activity.RESULT_OK, data)
             finish()
         }
+    }
+
+    private fun addTransactionToFirestore(transaction: Transaction) {
+        firestore.collection("transactions")
+            .add(transaction)
+            .addOnSuccessListener {
+                Toast.makeText(this, "Transaction added to Firestore", Toast.LENGTH_SHORT).show()
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Error adding transaction to Firestore: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
     }
 }
