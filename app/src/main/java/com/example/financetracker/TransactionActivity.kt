@@ -15,10 +15,11 @@ import androidx.core.content.ContextCompat
 import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.database.entity.Transaction
 import com.example.financetracker.viewmodel.TransactionViewModel
+import com.google.android.material.navigation.NavigationView
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-class TransactionActivity : BaseActivity() {
+class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedListener {
 
     override fun getLayoutResourceId(): Int = R.layout.activity_transactions
 
