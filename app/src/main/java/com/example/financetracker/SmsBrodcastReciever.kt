@@ -68,7 +68,9 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
                         name = details.merchant.ifBlank { "Unknown Merchant" },
                         amount = details.amount,
                         date = details.date,
-                        category = if (details.category == "Uncategorized") "" else details.category
+                        category = if (details.category == "Uncategorized") "" else details.category,
+                        merchant = details.merchant,
+                        description = details.description
                     )
 
                     // Save to database

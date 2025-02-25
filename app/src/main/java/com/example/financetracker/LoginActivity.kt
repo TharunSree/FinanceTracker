@@ -2,36 +2,32 @@ package com.example.financetracker
 
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Button
-import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.example.financetracker.databinding.ActivityLoginBinding
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 
 class LoginActivity : AppCompatActivity() {
 
     private lateinit var auth: FirebaseAuth
+    private lateinit var binding: ActivityLoginBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_login)
+        binding = ActivityLoginBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
         // Initialize Firebase Auth
         auth = FirebaseAuth.getInstance()
 
-        val emailEditText = findViewById<EditText>(R.id.email)
-        val passwordEditText = findViewById<EditText>(R.id.password)
-        val loginButton = findViewById<Button>(R.id.login_button)
-        val registerButton = findViewById<Button>(R.id.register_button)
-
-        loginButton.setOnClickListener {
-            val email = emailEditText.text.toString()
-            val password = passwordEditText.text.toString()
+        binding.loginButton.setOnClickListener {
+            val email = binding.email.text.toString()
+            val password = binding.password.text.toString()
             signIn(email, password)
         }
 
-        registerButton.setOnClickListener {
+        binding.registerButton.setOnClickListener {
             val intent = Intent(this, RegistrationActivity::class.java)
             startActivity(intent)
         }

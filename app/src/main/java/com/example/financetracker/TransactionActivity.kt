@@ -40,13 +40,17 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
                 val amount = data.getDoubleExtra("amount", 0.0)
                 val date = data.getLongExtra("date", System.currentTimeMillis())
                 val category = data.getStringExtra("category") ?: ""
+                val merchant = data.getStringExtra("merchant") ?: ""
+                val description = data.getStringExtra("description") ?: ""
 
                 val transaction = Transaction(
                     id = id,
                     name = name,
                     amount = amount,
                     date = date,
-                    category = category
+                    category = category,
+                    merchant = merchant,
+                    description = description
                 )
 
                 if (id != 0) {
@@ -146,10 +150,6 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
                         onEditTransaction(transaction)
                         true
                     }
-                    R.id.action_delete -> {
-                        onDeleteTransaction(transaction)
-                        true
-                    }
                     else -> false
                 }
             }
@@ -165,12 +165,10 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
             putExtra("TRANSACTION_AMOUNT", transaction.amount)
             putExtra("TRANSACTION_DATE", transaction.date) // Pass as Long timestamp
             putExtra("TRANSACTION_CATEGORY", transaction.category)
+            putExtra("TRANSACTION_MERCHANT", transaction.merchant)
+            putExtra("TRANSACTION_DESCRIPTION", transaction.description)
         }
         addTransactionLauncher.launch(intent)
-    }
-
-    private fun onDeleteTransaction(transaction: Transaction) {
-        transactionViewModel.deleteTransaction(transaction)
     }
 
     private fun parseDateToLong(date: String): Long {

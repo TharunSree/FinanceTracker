@@ -9,8 +9,7 @@ data class Transaction(
     var name: String,
     val amount: Double,
     val date: Long,
-    var category: String
+    var category: String,
+    val merchant: String,
+    val description: String,
 )
-
-
-

@@ -33,6 +33,18 @@
         android:layout_height="48dp"
         android:hint="Transaction Category" />
 
+    <EditText
+        android:id="@+id/transactionMerchantInput"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="Merchant" />
+
+    <EditText
+        android:id="@+id/transactionDescriptionInput"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="Description" />
+
     <Button
         android:id="@+id/saveTransactionButton"
         android:layout_width="match_parent"

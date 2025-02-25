@@ -68,6 +68,7 @@ class MessageExtractor(private val context: Context) {
         var merchant: String? = null
         var date: Long? = null
         var refNumber: String? = null
+        var description: String? = null
 
         // Extract reference number
         val refPattern = Regex("""(?:Ref(?:no|erence)\s*(?:Number)?:?\s*)(\d+)""", RegexOption.IGNORE_CASE)
@@ -125,6 +126,12 @@ class MessageExtractor(private val context: Context) {
             merchant = "Apay Transaction"
         }
 
+        // Extract description from the message
+        if (message.contains("desc:", ignoreCase = true)) {
+            val descPattern = Regex("""desc:\s*([A-Za-z0-9\s\-&@._]+)""", RegexOption.IGNORE_CASE)
+            description = descPattern.find(message)?.groupValues?.get(1)?.trim()
+        }
+
         // If we have at least an amount, create the transaction details
         return if (amount != null) {
             TransactionDetails(
@@ -133,7 +140,8 @@ class MessageExtractor(private val context: Context) {
                 date = date ?: System.currentTimeMillis(),
                 category = "Uncategorized",
                 currency = currency,
-                referenceNumber = refNumber
+                referenceNumber = refNumber,
+                description = description ?: ""
             )
         } else null
     }
@@ -145,5 +153,6 @@ data class TransactionDetails(
     val date: Long,
     val category: String,
     val currency: String,
-    val referenceNumber: String? = null
+    val referenceNumber: String? = null,
+    val description: String = ""
 )

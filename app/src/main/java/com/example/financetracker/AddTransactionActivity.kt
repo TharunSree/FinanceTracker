@@ -26,6 +26,8 @@ class AddTransactionActivity : AppCompatActivity() {
         val amountInput = findViewById<EditText>(R.id.transactionAmountInput)
         val dateInput = findViewById<EditText>(R.id.transactionDateInput)
         val categorySpinner = findViewById<Spinner>(R.id.transactionCategorySpinner)
+        val merchantInput = findViewById<EditText>(R.id.transactionMerchantInput)
+        val descriptionInput = findViewById<EditText>(R.id.transactionDescriptionInput)
         val saveButton = findViewById<Button>(R.id.saveTransactionButton)
 
         // Initialize calendar
@@ -61,6 +63,9 @@ class AddTransactionActivity : AppCompatActivity() {
             if (categoryPosition != -1) {
                 categorySpinner.setSelection(categoryPosition)
             }
+
+            merchantInput.setText(intent.getStringExtra("TRANSACTION_MERCHANT"))
+            descriptionInput.setText(intent.getStringExtra("TRANSACTION_DESCRIPTION"))
         } else {
             title = "Add Transaction"
             // Set current date for new transactions
@@ -109,6 +114,8 @@ class AddTransactionActivity : AppCompatActivity() {
                 putExtra("amount", amount)
                 putExtra("date", calendar.timeInMillis)
                 putExtra("category", categorySpinner.selectedItem.toString())
+                putExtra("merchant", merchantInput.text.toString())
+                putExtra("description", descriptionInput.text.toString())
             }
             setResult(Activity.RESULT_OK, data)
             finish()

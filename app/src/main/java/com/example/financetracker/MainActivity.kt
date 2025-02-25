@@ -109,13 +109,17 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                         val date = data.getStringExtra("date")
                             ?: throw IllegalArgumentException("Date is required")
                         val category = data.getStringExtra("category") ?: "Uncategorized"
+                        val merchant = data.getStringExtra("merchant") ?: ""
+                        val description = data.getStringExtra("description") ?: ""
 
                         val transaction = Transaction(
                             id = 0,
                             name = name,
                             amount = amount,
                             date = parseDateToLong(date),
-                            category = category
+                            category = category,
+                            merchant = merchant,
+                            description = description
                         )
 
                         transactionViewModel.addTransaction(transaction)
@@ -139,10 +143,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         auth = FirebaseAuth.getInstance()
         firestore = FirebaseFirestore.getInstance()
 
-        // Check if user is signed in (non-null) and update UI accordingly.
-        val currentUser = auth.currentUser
-        updateUI(currentUser)
-
         // Setup navigation drawer toggle
         setupDrawerToggle()
 
@@ -156,12 +156,15 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
         // Handle intent extras for notifications
         handleIntentExtras(intent)
-        updateNavHeader()
 
         setSupportActionBar(binding.toolbar)
 
         val toggle = ActionBarDrawerToggle(
-            this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close
+            this,
+            binding.drawerLayout,
+            binding.toolbar,
+            R.string.navigation_drawer_open,
+            R.string.navigation_drawer_close
         )
         binding.drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
@@ -186,10 +189,8 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     }
 
     private fun updateUI(user: FirebaseUser?) {
-        if (user != null) {
-            // User is signed in, proceed to the main functionality
-        } else {
-            // No user is signed in, redirect to LoginActivity
+        // Update UI based on user state
+        if (user == null) {
             val intent = Intent(this, LoginActivity::class.java)
             startActivity(intent)
             finish()
@@ -298,14 +299,18 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             val message = intent.getStringExtra("TRANSACTION_MESSAGE")
             val amount = intent.getDoubleExtra("TRANSACTION_AMOUNT", 0.0)
             val date = intent.getLongExtra("TRANSACTION_DATE", System.currentTimeMillis())
+            val merchant = intent.getStringExtra("TRANSACTION_MERCHANT") ?: "Unknown Merchant"
+            val description = intent.getStringExtra("TRANSACTION_DESCRIPTION") ?: ""
 
             // Create a temporary transaction for the dialog
             val transaction = Transaction(
                 id = 0,
-                name = "Unknown Merchant",
+                name = merchant,
                 amount = amount,
                 date = date,
-                category = "Uncategorized"
+                category = "Uncategorized",
+                merchant = merchant,
+                description = description
             )
 
             message?.let {
@@ -449,6 +454,22 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
     override fun onNavigationItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
+            R.id.nav_home -> {
+                // Handle home navigation
+                val intent = Intent(this, MainActivity::class.java)
+                startActivity(intent)
+            }
+
+            R.id.nav_transactions -> {
+                // Handle transactions navigation
+                val intent = Intent(this, TransactionActivity::class.java)
+                startActivity(intent)
+            }
+
+            R.id.nav_settings -> {
+                // Handle settings navigation
+            }
+
             R.id.nav_login_logout -> {
                 handleLoginLogout()
             }
