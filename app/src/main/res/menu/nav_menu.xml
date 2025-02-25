@@ -13,8 +13,8 @@
             android:icon="@drawable/ic_settings"
             android:title="Settings" />
         <item
-            android:id="@+id/nav_logout"
+            android:id="@+id/nav_login_logout"
             android:icon="@drawable/ic_logout"
-            android:title="Logout" />
+            android:title="Login/Logout" />
     </group>
 </menu>

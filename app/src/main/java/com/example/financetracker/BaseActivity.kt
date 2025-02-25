@@ -55,7 +55,7 @@ abstract class BaseActivity : AppCompatActivity(), NavigationView.OnNavigationIt
             R.id.nav_settings -> {
                 // Handle settings navigation
             }
-            R.id.nav_logout -> {
+            R.id.nav_login_logout -> {
                 // Handle logout
                 auth.signOut()
                 val intent = Intent(this, LoginActivity::class.java)

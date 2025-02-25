@@ -42,6 +42,8 @@ import com.google.firebase.firestore.FirebaseFirestore
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.drawerlayout.widget.DrawerLayout
 import com.google.android.material.navigation.NavigationView
+import com.example.financetracker.databinding.ActivityMainBinding
+import com.example.financetracker.databinding.NavHeaderBinding
 
 class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetailsListener,
     NavigationView.OnNavigationItemSelectedListener {
@@ -55,6 +57,8 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     private lateinit var auth: FirebaseAuth
     private lateinit var firestore: FirebaseFirestore
     private lateinit var toggle: ActionBarDrawerToggle
+    private lateinit var binding: ActivityMainBinding
+    private lateinit var headerBinding: NavHeaderBinding
 
     private val transactionViewModel: TransactionViewModel by viewModels {
         val database = TransactionDatabase.getDatabase(this)
@@ -128,6 +132,8 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
         // Initialize Firebase Auth and Firestore
         auth = FirebaseAuth.getInstance()
@@ -150,11 +156,31 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
         // Handle intent extras for notifications
         handleIntentExtras(intent)
+        updateNavHeader()
+
+        setSupportActionBar(binding.toolbar)
+
+        val toggle = ActionBarDrawerToggle(
+            this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close
+        )
+        binding.drawerLayout.addDrawerListener(toggle)
+        toggle.syncState()
+
+        binding.navView.setNavigationItemSelectedListener(this)
+
+        // Update nav header with user info
+        headerBinding = NavHeaderBinding.bind(binding.navView.getHeaderView(0))
+        updateNavHeader()
     }
 
     private fun setupDrawerToggle() {
         // Initialize the toggle
-        toggle = ActionBarDrawerToggle(this, drawerLayout, R.string.navigation_drawer_open, R.string.navigation_drawer_close)
+        toggle = ActionBarDrawerToggle(
+            this,
+            drawerLayout,
+            R.string.navigation_drawer_open,
+            R.string.navigation_drawer_close
+        )
         drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
     }
@@ -421,6 +447,45 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         }
     }
 
+    override fun onNavigationItemSelected(item: MenuItem): Boolean {
+        when (item.itemId) {
+            R.id.nav_login_logout -> {
+                handleLoginLogout()
+            }
+        }
+
+        drawerLayout.closeDrawer(GravityCompat.START)
+        return true
+    }
+
+    private fun handleLoginLogout() {
+        if (auth.currentUser != null) {
+            // User is signed in, show logout confirmation dialog
+            showLogoutConfirmationDialog()
+        } else {
+            // User is not signed in, redirect to login activity
+            val intent = Intent(this, LoginActivity::class.java)
+            startActivity(intent)
+        }
+    }
+
+    private fun showLogoutConfirmationDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Logout Confirmation")
+            .setMessage("Are you sure you want to logout?")
+            .setPositiveButton("Yes") { _, _ ->
+                auth.signOut()
+                Toast.makeText(this, "Logged out successfully.", Toast.LENGTH_SHORT).show()
+                updateUI(null)
+                updateNavHeader()
+            }
+            .setNegativeButton("No") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .create()
+            .show()
+    }
+
     private fun saveTransactionPattern(messageBody: String, merchant: String, category: String) {
         val pattern = TransactionPattern(messageBody, merchant, category)
         val prefs = getSharedPreferences("TransactionPatterns", Context.MODE_PRIVATE)
@@ -438,6 +503,15 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             unregisterReceiver(smsBroadcastReceiver)
         } catch (e: Exception) {
             // Receiver might not be registered
+        }
+    }
+
+    private fun updateNavHeader() {
+        val currentUser = auth.currentUser
+        if (currentUser != null) {
+            headerBinding.userLoginText.text = currentUser.email
+        } else {
+            headerBinding.userLoginText.text = "Guest"
         }
     }
 

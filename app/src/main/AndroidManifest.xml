@@ -45,6 +45,7 @@
             android:name=".TransactionActivity"
             android:exported="true" />
         <activity android:name=".LoginActivity" />
+        <activity android:name=".RegistrationActivity" />
 
         <!-- SMS Receiver -->
         <receiver

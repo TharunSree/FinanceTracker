@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">FinanceTracker</string>
+    <string name="app_name">Finance Tracker</string>
     <string-array name="transaction_categories">
         <item>Food</item>
         <item>Shopping</item>
