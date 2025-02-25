@@ -26,7 +26,7 @@ abstract class BaseActivity : AppCompatActivity(), NavigationView.OnNavigationIt
 
     abstract fun getLayoutResourceId(): Int
 
-    private fun setupNavigationDrawer() {
+    fun setupNavigationDrawer() {
         drawerLayout = findViewById(R.id.drawer_layout)
         navigationView = findViewById(R.id.nav_view)
         val toolbar = findViewById<Toolbar>(R.id.toolbar)

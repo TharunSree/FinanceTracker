@@ -68,6 +68,9 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
 
         // Set title in toolbar
         supportActionBar?.title = "Transactions"
+
+        // Initialize the navigation drawer
+        setupNavigationDrawer()
     }
 
     private fun setupAddTransactionButton() {
