@@ -26,5 +26,6 @@
     <color name="colorText">#212121</color>
     <color name="colorTextSecondary">#757575</color>
     <color name="colorDivider">#BDBDBD</color>
+    <color name="table_header_background">#8CC3E0</color>
 
 </resources>

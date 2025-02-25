@@ -12,7 +12,7 @@ import com.google.firebase.auth.FirebaseAuth
 
 abstract class BaseActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener {
 
-    lateinit var drawerLayout: DrawerLayout
+    protected lateinit var drawerLayout: DrawerLayout
     private lateinit var auth: FirebaseAuth
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -27,7 +27,7 @@ abstract class BaseActivity : AppCompatActivity(), NavigationView.OnNavigationIt
 
     private fun setupNavigationDrawer() {
         drawerLayout = findViewById(R.id.drawer_layout)
-        val navigationView = findViewById<NavigationView>(R.id.navigationView)
+        val navigationView = findViewById<NavigationView>(R.id.nav_view)
         val toolbar = findViewById<Toolbar>(R.id.toolbar)
 
         setSupportActionBar(toolbar)
@@ -36,9 +36,7 @@ abstract class BaseActivity : AppCompatActivity(), NavigationView.OnNavigationIt
             setHomeAsUpIndicator(R.drawable.ic_menu)
         }
 
-        navigationView?.let {
-            it.setNavigationItemSelectedListener(this)
-        } ?: throw NullPointerException("NavigationView not found in layout")
+        navigationView.setNavigationItemSelectedListener(this)
     }
 
     override fun onNavigationItemSelected(item: MenuItem): Boolean {
