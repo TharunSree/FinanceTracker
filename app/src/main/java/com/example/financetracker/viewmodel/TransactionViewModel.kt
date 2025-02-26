@@ -1,13 +1,10 @@
 package com.example.financetracker.viewmodel
 
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.asLiveData
-import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.*
 import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.database.entity.Transaction
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -30,6 +27,8 @@ data class TransactionStatistics(
 class TransactionViewModel(private val database: TransactionDatabase) : ViewModel() {
 
     private val transactionDao = database.transactionDao()
+    private val firestore = FirebaseFirestore.getInstance()
+    private var transactionListener: ListenerRegistration? = null
 
     // Using StateFlow for filtered transactions
     private val _filteredTransactions = MutableStateFlow<List<Transaction>>(emptyList())
@@ -167,6 +166,25 @@ class TransactionViewModel(private val database: TransactionDatabase) : ViewMode
             val allTransactions = transactionDao.getAllTransactions().first() // Convert Flow to List
             _filteredTransactions.value = allTransactions
         }
+    }
+
+    // Method to start listening to Firestore updates for the user's transactions
+    fun startListeningToTransactions(userId: String) {
+        transactionListener = firestore.collection("users").document(userId).collection("transactions")
+            .addSnapshotListener { snapshots, e ->
+                if (e != null) {
+                    return@addSnapshotListener
+                }
+
+                val transactions = snapshots?.toObjects(Transaction::class.java) ?: return@addSnapshotListener
+                setTransactions(transactions)
+            }
+    }
+
+    // Method to stop listening to Firestore updates
+    fun stopListeningToTransactions() {
+        transactionListener?.remove()
+        transactionListener = null
     }
 
     class Factory(private val database: TransactionDatabase) : ViewModelProvider.Factory {
