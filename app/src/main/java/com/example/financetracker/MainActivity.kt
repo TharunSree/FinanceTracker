@@ -230,7 +230,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             Toast.makeText(this, "Firebase init error: ${e.message}", Toast.LENGTH_SHORT).show()
         }
 
-        setupDrawerToggle()
+        setupNavigationDrawer()
         setupPermissions()
         setupStatisticsView()
         setupNotificationChannel()
@@ -242,16 +242,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         handleIntentExtras(intent)
 
         setSupportActionBar(findViewById(R.id.toolbar))
-
-        val toggle = ActionBarDrawerToggle(
-            this,
-            drawerLayout,
-            findViewById(R.id.toolbar),
-            R.string.navigation_drawer_open,
-            R.string.navigation_drawer_close
-        )
-        drawerLayout.addDrawerListener(toggle)
-        toggle.syncState()
 
         findViewById<NavigationView>(R.id.nav_view).setNavigationItemSelectedListener(this)
 
