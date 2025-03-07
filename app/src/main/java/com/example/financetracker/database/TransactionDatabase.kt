@@ -9,7 +9,7 @@ import com.example.financetracker.database.dao.TransactionDao
 import com.example.financetracker.database.entity.Merchant
 import com.example.financetracker.database.entity.Transaction
 
-@Database(entities = [Transaction::class, Merchant::class], version = 3, exportSchema = false)
+@Database(entities = [Transaction::class, Merchant::class], version = 5, exportSchema = false)
 abstract class TransactionDatabase : RoomDatabase() {
 
     abstract fun transactionDao(): TransactionDao

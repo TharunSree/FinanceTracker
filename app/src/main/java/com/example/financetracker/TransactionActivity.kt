@@ -73,6 +73,7 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
         transactionTableLayout = findViewById(R.id.transactionTableLayout)
         setupAddTransactionButton()
         observeTransactions()
+        updateNavHeader()
 
         // Set title in toolbar
         supportActionBar?.title = "Transactions"

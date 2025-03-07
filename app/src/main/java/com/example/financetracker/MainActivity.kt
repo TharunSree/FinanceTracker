@@ -11,6 +11,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.Button
@@ -40,13 +41,14 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
 import androidx.appcompat.app.ActionBarDrawerToggle
-import androidx.drawerlayout.widget.DrawerLayout
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.navigation.NavigationView
 import com.example.financetracker.databinding.ActivityMainBinding
-import com.example.financetracker.databinding.NavHeaderBinding
+import android.view.View
+import com.example.financetracker.database.dao.TransactionDao
+import kotlinx.coroutines.flow.first
 
-class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetailsListener,
-    NavigationView.OnNavigationItemSelectedListener {
+class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetailsListener {
 
     override fun getLayoutResourceId(): Int = R.layout.activity_main
 
@@ -54,15 +56,16 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     private lateinit var messageExtractor: MessageExtractor
     private var currentTransaction: Transaction? = null
     private var currentMessageBody: String? = null
-    private lateinit var auth: FirebaseAuth
-    private lateinit var firestore: FirebaseFirestore
-    private lateinit var toggle: ActionBarDrawerToggle
     private lateinit var binding: ActivityMainBinding
-    private lateinit var headerBinding: NavHeaderBinding
+    private val TAG = "MainActivity"
 
     private val transactionViewModel: TransactionViewModel by viewModels {
         val database = TransactionDatabase.getDatabase(this)
         TransactionViewModel.Factory(database)
+    }
+
+    private val transactionDao by lazy {
+        TransactionDatabase.getDatabase(this).transactionDao()
     }
 
     companion object {
@@ -103,6 +106,17 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             if (result.resultCode == RESULT_OK) {
                 result.data?.let { data ->
                     try {
+                        // Get current user ID before proceeding
+                        val userId = auth.currentUser?.uid
+
+                        if (userId == null) {
+                            Toast.makeText(
+                                this, "You must be logged in to add transactions",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            return@registerForActivityResult
+                        }
+
                         val name = data.getStringExtra("name")
                             ?: throw IllegalArgumentException("Name is required")
                         val amount = data.getDoubleExtra("amount", 0.0)
@@ -113,20 +127,25 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                         val description = data.getStringExtra("description") ?: ""
 
                         val transaction = Transaction(
-                            id = 0,
+                            id = 0,  // Room will generate this
                             name = name,
                             amount = amount,
                             date = parseDateToLong(date),
                             category = category,
                             merchant = merchant,
-                            description = description
+                            description = description,
+                            userId = userId  // Set the user ID
                         )
 
-                        transactionViewModel.addTransaction(transaction)
+                        // Add to Room database
+                        lifecycleScope.launch {
+                            transactionViewModel.addTransaction(transaction)
 
-                        // Add transaction to Firestore
-                        addTransactionToFirestore(transaction)
+                            // Add to Firestore after adding to Room
+                            addTransactionToFirestore(transaction)
+                        }
                     } catch (e: Exception) {
+                        Log.e(TAG, "Error adding transaction", e)
                         Toast.makeText(
                             this,
                             "Error adding transaction: ${e.message}",
@@ -139,7 +158,13 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
     private fun addTransactionToFirestore(transaction: Transaction) {
         val userId = auth.currentUser?.uid ?: return
-        val transactionWithUserId = mapOf(
+        Log.d(TAG, "Adding transaction to Firestore for user: $userId")
+
+        // Ensure transaction has userId
+        transaction.userId = userId
+
+        // Create a map with all fields
+        val transactionMap = hashMapOf(
             "id" to transaction.id,
             "name" to transaction.name,
             "amount" to transaction.amount,
@@ -147,15 +172,35 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             "category" to transaction.category,
             "merchant" to transaction.merchant,
             "description" to transaction.description,
-            "userId" to userId
+            "userId" to userId  // Always include userId
         )
-        firestore.collection("users").document(userId).collection("transactions")
-            .add(transactionWithUserId)
+
+        // First create a document reference to get an ID
+        val docRef = firestore.collection("users")
+            .document(userId)
+            .collection("transactions")
+            .document()
+
+        // Add the document ID to the transaction data
+        val docId = docRef.id
+        transactionMap["documentId"] = docId
+
+        // Now save the transaction
+        docRef.set(transactionMap)
             .addOnSuccessListener {
-                Toast.makeText(this, "Transaction added to Firestore", Toast.LENGTH_SHORT).show()
+                Log.d(TAG, "Transaction successfully added to Firestore with ID: $docId")
+
+                // Update the local transaction with the document ID
+                lifecycleScope.launch {
+                    // Set the document ID and update in Room
+                    transaction.documentId = docId
+                    transactionViewModel.updateTransaction(transaction)
+                }
             }
             .addOnFailureListener { e ->
-                Toast.makeText(this, "Error adding transaction to Firestore: ${e.message}", Toast.LENGTH_SHORT).show()
+                Log.e(TAG, "Error adding transaction to Firestore", e)
+                Toast.makeText(this, "Error saving to cloud: ${e.message}", Toast.LENGTH_SHORT)
+                    .show()
             }
     }
 
@@ -164,14 +209,28 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Initialize Firebase Auth and Firestore
-        auth = FirebaseAuth.getInstance()
-        firestore = FirebaseFirestore.getInstance()
+        // Initialize Firebase Auth and Firestore with logging
+        try {
+            auth = FirebaseAuth.getInstance()
+            firestore = FirebaseFirestore.getInstance()
 
-        // Setup navigation drawer toggle
+            // Log authentication state
+            val currentUser = auth.currentUser
+            if (currentUser != null) {
+                Log.d(TAG, "User is signed in: ${currentUser.uid}, Email: ${currentUser.email}")
+
+                // Start listening for transactions
+                transactionViewModel.startListeningToTransactions(currentUser.uid)
+            } else {
+                Log.d(TAG, "No user is signed in")
+                // Redirect to login - handled by BaseActivity
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Firebase initialization error", e)
+            Toast.makeText(this, "Firebase init error: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+
         setupDrawerToggle()
-
-        // Other initialization code...
         setupPermissions()
         setupStatisticsView()
         setupNotificationChannel()
@@ -182,30 +241,44 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         // Handle intent extras for notifications
         handleIntentExtras(intent)
 
-        setSupportActionBar(binding.toolbar)
+        setSupportActionBar(findViewById(R.id.toolbar))
 
         val toggle = ActionBarDrawerToggle(
-            this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close
+            this,
+            drawerLayout,
+            findViewById(R.id.toolbar),
+            R.string.navigation_drawer_open,
+            R.string.navigation_drawer_close
         )
-        binding.drawerLayout.addDrawerListener(toggle)
+        drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
 
-        binding.navView.setNavigationItemSelectedListener(this)
+        findViewById<NavigationView>(R.id.nav_view).setNavigationItemSelectedListener(this)
 
-        // Update nav header with user info
-        headerBinding = NavHeaderBinding.bind(binding.navView.getHeaderView(0))
+        // Set up the Add Transaction FAB
+        findViewById<FloatingActionButton>(R.id.addTransactionButton).setOnClickListener {
+            if (auth.currentUser != null) {
+                val intent = Intent(this, AddTransactionActivity::class.java)
+                addTransactionLauncher.launch(intent)
+            } else {
+                Toast.makeText(this, "Please log in to add transactions", Toast.LENGTH_SHORT).show()
+                val intent = Intent(this, LoginActivity::class.java)
+                startActivity(intent)
+            }
+        }
+        // Set the current user's name in the navigation drawer
         updateNavHeader()
     }
 
     private fun setupDrawerToggle() {
-        // Initialize the toggle
-        toggle = ActionBarDrawerToggle(
+        val toggle = ActionBarDrawerToggle(
             this,
-            binding.drawerLayout,
+            drawerLayout,
+            findViewById(R.id.toolbar),
             R.string.navigation_drawer_open,
             R.string.navigation_drawer_close
         )
-        binding.drawerLayout.addDrawerListener(toggle)
+        drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
     }
 
@@ -213,28 +286,26 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         if (user == null) {
             // Clear transactions from local database when user logs out
             transactionViewModel.clearTransactions()
+
             // Make sure to stop listening when logging out
             transactionViewModel.stopListeningToTransactions()
+
+            // Redirect to login
             val intent = Intent(this, LoginActivity::class.java)
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             startActivity(intent)
             finish()
         } else {
             // Fetch user transactions from Firestore when user logs in
-            transactionViewModel.startListeningToTransactions(user.uid)
+            fetchUserTransactions(user.uid)
         }
     }
 
     private fun fetchUserTransactions(userId: String) {
-        firestore.collection("users").document(userId).collection("transactions")
-            .get()
-            .addOnSuccessListener { result ->
-                val transactions = result.toObjects(Transaction::class.java)
-                transactionViewModel.setTransactions(transactions)
-                transactionViewModel.startListeningToTransactions(userId)
-            }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "Error fetching transactions: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
+        Log.d(TAG, "Fetching transactions for user: $userId")
+
+        // Start listening for real-time updates
+        transactionViewModel.startListeningToTransactions(userId)
     }
 
     private fun requestNotificationPermission() {
@@ -341,6 +412,9 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             val merchant = intent.getStringExtra("TRANSACTION_MERCHANT") ?: "Unknown Merchant"
             val description = intent.getStringExtra("TRANSACTION_DESCRIPTION") ?: ""
 
+            // Get current user ID
+            val userId = auth.currentUser?.uid ?: return
+
             // Create a temporary transaction for the dialog
             val transaction = Transaction(
                 id = 0,
@@ -349,16 +423,13 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                 date = date,
                 category = "Uncategorized",
                 merchant = merchant,
-                description = description
+                description = description,
+                userId = userId
             )
 
             message?.let {
                 showTransactionDetailsDialog(transaction, it)
             }
-        }
-        if (intent.getBooleanExtra("SHOW_TRANSACTION_DIALOG", false)) {
-            val message = intent.getStringExtra("TRANSACTION_MESSAGE")
-            val amount = intent.getDoubleExtra("TRANSACTION_AMOUNT", 0.0)
         }
     }
 
@@ -402,6 +473,14 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     private fun setupObservers() {
         transactionViewModel.transactions.observe(this) { transactions ->
             // Handle transactions if needed
+            Log.d(TAG, "Observed ${transactions.size} transactions in LiveData")
+
+            // Show/hide "no transactions" message
+            if (transactions.isEmpty()) {
+                findViewById<TextView>(R.id.noTransactionsMessage)?.visibility = View.VISIBLE
+            } else {
+                findViewById<TextView>(R.id.noTransactionsMessage)?.visibility = View.GONE
+            }
         }
 
         lifecycleScope.launch {
@@ -442,6 +521,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             dateFormat.parse(date)?.time ?: System.currentTimeMillis()
         } catch (e: Exception) {
+            Log.e(TAG, "Error parsing date: $date", e)
             System.currentTimeMillis()
         }
     }
@@ -452,8 +532,42 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (toggle.onOptionsItemSelected(item)) {
-            return true
+        when (item.itemId) {
+            R.id.menu_refresh -> {
+                // Refresh data from Firestore
+                val userId = auth.currentUser?.uid
+                if (userId != null) {
+                    Toast.makeText(this, "Refreshing data...", Toast.LENGTH_SHORT).show()
+                    transactionViewModel.stopListeningToTransactions()
+                    transactionViewModel.startListeningToTransactions(userId)
+                }
+                return true
+            }
+
+            R.id.menu_filter_today -> {
+                filterTransactionsByDate(FilterPeriod.TODAY)
+                return true
+            }
+
+            R.id.menu_filter_week -> {
+                filterTransactionsByDate(FilterPeriod.WEEK)
+                return true
+            }
+
+            R.id.menu_filter_month -> {
+                filterTransactionsByDate(FilterPeriod.MONTH)
+                return true
+            }
+
+            R.id.menu_filter_clear -> {
+                transactionViewModel.loadAllTransactions()
+                return true
+            }
+
+            android.R.id.home -> {
+                drawerLayout.openDrawer(GravityCompat.START)
+                return true
+            }
         }
         return super.onOptionsItemSelected(item)
     }
@@ -475,11 +589,26 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     }
 
     override fun onDetailsEntered(merchant: String, category: String, saveAsPattern: Boolean) {
+        val userId = auth.currentUser?.uid
+
+        if (userId == null) {
+            Toast.makeText(this, "You must be logged in to save transactions", Toast.LENGTH_SHORT)
+                .show()
+            return
+        }
+
         currentTransaction?.let { transaction ->
             lifecycleScope.launch {
+                // Update transaction details
                 transaction.name = merchant
                 transaction.category = category
+                transaction.userId = userId  // Ensure userId is set
+
+                // Update in local database
                 transactionViewModel.updateTransaction(transaction)
+
+                // Update in Firestore
+                updateTransactionInFirestore(transaction)
             }
         }
 
@@ -490,22 +619,75 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         }
     }
 
+    private fun updateTransactionInFirestore(transaction: Transaction) {
+        val userId = auth.currentUser?.uid ?: return
+
+        // Create a map with all fields
+        val transactionMap = hashMapOf(
+            "id" to transaction.id,
+            "name" to transaction.name,
+            "amount" to transaction.amount,
+            "date" to transaction.date,
+            "category" to transaction.category,
+            "merchant" to transaction.merchant,
+            "description" to transaction.description,
+            "userId" to userId
+        )
+
+        // If the document ID exists in the transaction, use it
+        // Otherwise, create a new document in Firestore
+        val docId = if (!transaction.documentId.isNullOrEmpty()) {
+            transaction.documentId
+        } else {
+            // Generate a new document ID if needed
+            firestore.collection("users")
+                .document(userId)
+                .collection("transactions")
+                .document().id
+        }
+
+        // Add document ID to the map
+        transactionMap["documentId"] = docId
+
+        // Update in Firestore
+        firestore.collection("users")
+            .document(userId)
+            .collection("transactions")
+            .document(docId)
+            .set(transactionMap)
+            .addOnSuccessListener {
+                Log.d(TAG, "Transaction successfully updated in Firestore")
+
+                // Update document ID in transaction object if it was empty before
+                if (transaction.documentId.isNullOrEmpty()) {
+                    transaction.documentId = docId
+                    lifecycleScope.launch {
+                        transactionViewModel.updateTransaction(transaction)
+                    }
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Error updating transaction in Firestore", e)
+                Toast.makeText(this, "Error updating in cloud: ${e.message}", Toast.LENGTH_SHORT)
+                    .show()
+            }
+    }
+
     override fun onNavigationItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.nav_home -> {
-                // Handle home navigation
-                val intent = Intent(this, MainActivity::class.java)
-                startActivity(intent)
+                // Already in MainActivity, just close drawer
             }
 
             R.id.nav_transactions -> {
-                // Handle transactions navigation
+                // Navigate to TransactionActivity
                 val intent = Intent(this, TransactionActivity::class.java)
                 startActivity(intent)
             }
 
             R.id.nav_settings -> {
-                // Handle settings navigation
+                // Handle settings navigation if implemented
+                Toast.makeText(this, "Settings not implemented yet", Toast.LENGTH_SHORT).show()
             }
 
             R.id.nav_login_logout -> {
@@ -513,7 +695,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             }
         }
 
-        binding.drawerLayout.closeDrawer(GravityCompat.START)
+        drawerLayout.closeDrawer(GravityCompat.START)
         return true
     }
 
@@ -533,11 +715,19 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             .setTitle("Logout Confirmation")
             .setMessage("Are you sure you want to logout?")
             .setPositiveButton("Yes") { _, _ ->
-                auth.signOut()
+                // Stop listening to Firestore updates
+                transactionViewModel.stopListeningToTransactions()
+
+                // Clear local transactions
                 transactionViewModel.clearTransactions()
-                Toast.makeText(this, "Logged out successfully.", Toast.LENGTH_SHORT).show()
+
+                // Sign out from Firebase
+                auth.signOut()
+
+                Toast.makeText(this, "Logged out successfully", Toast.LENGTH_SHORT).show()
+
+                // Redirect to login screen
                 updateUI(null)
-                updateNavHeader()
             }
             .setNegativeButton("No") { dialog, _ ->
                 dialog.dismiss()
@@ -555,6 +745,9 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             add(Gson().toJson(pattern))
         }
         prefs.edit().putStringSet("patterns", newPatternsJson).apply()
+
+        Log.d(TAG, "Transaction pattern saved: $pattern")
+        Toast.makeText(this, "Pattern saved for future transactions", Toast.LENGTH_SHORT).show()
     }
 
     override fun onDestroy() {
@@ -563,15 +756,143 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             unregisterReceiver(smsBroadcastReceiver)
         } catch (e: Exception) {
             // Receiver might not be registered
+            Log.e(TAG, "Error unregistering receiver", e)
+        }
+
+        // Stop listening to Firestore updates
+        transactionViewModel.stopListeningToTransactions()
+    }
+
+    override fun onResume() {
+        super.onResume()
+
+        // Check if user is still authenticated
+        val currentUser = auth.currentUser
+        if (currentUser != null) {
+            // Refresh data
+            transactionViewModel.startListeningToTransactions(currentUser.uid)
+
+            // Show current user info
+            val currentDateTime = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Calendar.getInstance().time)
+            Log.d(TAG, "Current Date and Time (Local - YYYY-MM-DD HH:MM:SS formatted): $currentDateTime")
+            Log.d(TAG, "Current User's Login: ${currentUser.email}")
+
+            // Update subtitle with user info
+            supportActionBar?.subtitle = "Logged in as: ${currentUser.email}"
+        } else {
+            // User not logged in - BaseActivity should handle this
         }
     }
 
-    public fun updateNavHeader() {
-        val currentUser = auth.currentUser
-        if (currentUser != null) {
-            headerBinding.userLoginText.text = currentUser.email
-        } else {
-            headerBinding.userLoginText.text = "Guest"
+    // For debugging Firestore connectivity
+    private fun debugFirestore() {
+        val userId = auth.currentUser?.uid
+        if (userId == null) {
+            Log.d(TAG, "No user logged in for debugging")
+            Toast.makeText(this, "Please log in first", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Check if user document exists
+        firestore.collection("users").document(userId)
+            .get()
+            .addOnSuccessListener { document ->
+                if (document != null && document.exists()) {
+                    Log.d(TAG, "Found user document: ${document.data}")
+                    Toast.makeText(this, "User document exists", Toast.LENGTH_SHORT).show()
+                } else {
+                    Log.d(TAG, "No user document found")
+                    Toast.makeText(this, "No user document found - creating one", Toast.LENGTH_SHORT).show()
+
+                    // Create user document if missing
+                    val userProfile = hashMapOf(
+                        "uid" to userId,
+                        "email" to (auth.currentUser?.email ?: ""),
+                        "createdAt" to System.currentTimeMillis(),
+                        "lastLogin" to "2025-03-07 10:29:59",
+                        "username" to "TharunSree"  // Example using the provided information
+                    )
+
+                    firestore.collection("users").document(userId)
+                        .set(userProfile)
+                        .addOnSuccessListener {
+                            Toast.makeText(this, "User document created", Toast.LENGTH_SHORT).show()
+                        }
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Error checking user document", e)
+                Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    /**
+     * Shows a dialog to confirm adding a new transaction with detected info
+     */
+    fun showAddTransactionConfirmation(amount: Double, merchant: String, date: Long) {
+        val userId = auth.currentUser?.uid ?: return
+
+        // Create proposed transaction
+        val transaction = Transaction(
+            id = 0,
+            name = merchant,
+            amount = amount,
+            date = date,
+            category = "Uncategorized",
+            merchant = merchant,
+            description = "Auto-detected transaction",
+            userId = userId
+        )
+
+        // Show confirmation dialog
+        val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(date)
+
+        AlertDialog.Builder(this)
+            .setTitle("New Transaction Detected")
+            .setMessage("Would you like to add this transaction?\n\nMerchant: $merchant\nAmount: $${String.format("%.2f", amount)}\nDate: $dateStr")
+            .setPositiveButton("Add") { _, _ ->
+                lifecycleScope.launch {
+                    transactionViewModel.addTransaction(transaction)
+                    addTransactionToFirestore(transaction)
+                    Toast.makeText(this@MainActivity, "Transaction added", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Edit First") { _, _ ->
+                // Launch EditTransactionActivity with pre-filled data
+                val intent = Intent(this, AddTransactionActivity::class.java).apply {
+                    putExtra("merchant", merchant)
+                    putExtra("amount", amount)
+                    putExtra("date", dateStr)
+                }
+                addTransactionLauncher.launch(intent)
+            }
+            .setNeutralButton("Cancel", null)
+            .show()
+    }
+
+    /**
+     * Synchronizes all local transactions with Firestore to ensure data integrity
+     */
+    private fun syncAllTransactionsToFirestore() {
+        val userId = auth.currentUser?.uid ?: return
+
+        lifecycleScope.launch {
+            try {
+                val localTransactions = transactionDao.getAllTransactions().first()
+
+                for (transaction in localTransactions) {
+                    // Skip transactions that don't belong to this user
+                    if (transaction.userId != userId) continue
+
+                    // Update in Firestore
+                    updateTransactionInFirestore(transaction)
+                }
+
+                Toast.makeText(this@MainActivity, "Sync completed", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during sync", e)
+                Toast.makeText(this@MainActivity, "Sync failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

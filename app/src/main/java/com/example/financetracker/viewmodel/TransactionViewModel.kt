@@ -1,8 +1,10 @@
 package com.example.financetracker.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.*
 import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.database.entity.Transaction
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +31,11 @@ class TransactionViewModel(private val database: TransactionDatabase) : ViewMode
     private val transactionDao = database.transactionDao()
     private val firestore = FirebaseFirestore.getInstance()
     private var transactionListener: ListenerRegistration? = null
+    private val auth = FirebaseAuth.getInstance()
+
+    // Get current user ID
+    val userId: String?
+        get() = auth.currentUser?.uid
 
     // Using StateFlow for filtered transactions
     private val _filteredTransactions = MutableStateFlow<List<Transaction>>(emptyList())
@@ -43,86 +50,130 @@ class TransactionViewModel(private val database: TransactionDatabase) : ViewMode
         updateStatistics()
     }
 
-    private fun updateStatistics() {
+    fun updateStatistics() {
         viewModelScope.launch {
-            val allTransactions = transactions.value ?: return@launch
+            try {
+                val allTransactions = transactions.value ?: return@launch
 
-            val categoryMap = mutableMapOf<String, MutableList<Transaction>>()
-            var maxExpense = Double.MIN_VALUE
-            var minExpense = Double.MAX_VALUE
-            var totalExpense = 0.0
+                // Skip update if there are no transactions
+                if (allTransactions.isEmpty()) {
+                    _transactionStatistics.value = TransactionStatistics(
+                        maxExpense = 0.0,
+                        minExpense = 0.0,
+                        totalExpense = 0.0,
+                        categoryStats = emptyMap()
+                    )
+                    return@launch
+                }
 
-            allTransactions.forEach { transaction ->
-                categoryMap.getOrPut(transaction.category) { mutableListOf() }.add(transaction)
-                maxExpense = maxOf(maxExpense, transaction.amount)
-                minExpense = minOf(minExpense, transaction.amount)
-                totalExpense += transaction.amount
-            }
+                val categoryMap = mutableMapOf<String, MutableList<Transaction>>()
+                var maxExpense = Double.MIN_VALUE
+                var minExpense = Double.MAX_VALUE
+                var totalExpense = 0.0
 
-            val categoryStats = categoryMap.mapValues { (_, transactions) ->
-                CategoryStatistics(
-                    maxExpense = transactions.maxOf { it.amount },
-                    totalExpense = transactions.sumOf { it.amount },
-                    transactionCount = transactions.size
+                allTransactions.forEach { transaction ->
+                    // Skip invalid transactions
+                    if (transaction.category.isNullOrBlank()) return@forEach
+
+                    categoryMap.getOrPut(transaction.category) { mutableListOf() }.add(transaction)
+                    maxExpense = maxOf(maxExpense, transaction.amount)
+                    minExpense = minOf(minExpense, transaction.amount)
+                    totalExpense += transaction.amount
+                }
+
+                // Handle edge case if filtering removed all transactions
+                if (categoryMap.isEmpty()) {
+                    _transactionStatistics.value = TransactionStatistics(
+                        maxExpense = 0.0,
+                        minExpense = 0.0,
+                        totalExpense = 0.0,
+                        categoryStats = emptyMap()
+                    )
+                    return@launch
+                }
+
+                val categoryStats = categoryMap.mapValues { (_, transactions) ->
+                    CategoryStatistics(
+                        maxExpense = transactions.maxOfOrNull { it.amount } ?: 0.0,
+                        totalExpense = transactions.sumOf { it.amount },
+                        transactionCount = transactions.size
+                    )
+                }
+
+                _transactionStatistics.value = TransactionStatistics(
+                    maxExpense = if (maxExpense != Double.MIN_VALUE) maxExpense else 0.0,
+                    minExpense = if (minExpense != Double.MAX_VALUE) minExpense else 0.0,
+                    totalExpense = totalExpense,
+                    categoryStats = categoryStats
                 )
+            } catch (e: Exception) {
+                // Handle any errors
+                Log.e("TransactionViewModel", "Error updating statistics", e)
             }
-
-            _transactionStatistics.value = TransactionStatistics(
-                maxExpense = maxExpense,
-                minExpense = minExpense,
-                totalExpense = totalExpense,
-                categoryStats = categoryStats
-            )
         }
     }
 
     // Method to add a transaction
-    fun addTransaction(transaction: Transaction) {
-        viewModelScope.launch {
-            transactionDao.insertTransaction(transaction)
-            updateStatistics()
+    fun addTransaction(transaction: Transaction) = viewModelScope.launch {
+        // Set user ID if not already set
+        if (transaction.userId.isNullOrEmpty()) {
+            transaction.userId = userId
         }
+
+        transactionDao.insertTransaction(transaction)
+        updateStatistics()
     }
 
     // Method to delete a transaction
-    fun deleteTransaction(transaction: Transaction) {
-        viewModelScope.launch {
-            transactionDao.deleteTransaction(transaction)
-            updateStatistics()
+    fun deleteTransaction(transaction: Transaction) = viewModelScope.launch {
+        transactionDao.deleteTransaction(transaction)
+
+        // Delete from Firestore
+        val uid = userId ?: return@launch
+
+        // Use documentId if available, otherwise use ID
+        val docId = if (transaction.documentId.isNotEmpty()) {
+            transaction.documentId
+        } else {
+            transaction.id.toString()
         }
+
+        firestore.collection("users").document(uid)
+            .collection("transactions")
+            .document(docId)
+            .delete()
+
+        updateStatistics()
     }
 
     // Method to update a transaction
-    fun updateTransaction(transaction: Transaction) {
-        viewModelScope.launch {
-            transactionDao.updateTransaction(transaction)
-            updateStatistics()
+    fun updateTransaction(transaction: Transaction) = viewModelScope.launch {
+        // Make sure userId is set
+        if (transaction.userId.isNullOrEmpty()) {
+            transaction.userId = userId
         }
+
+        transactionDao.updateTransaction(transaction)
+        updateStatistics()
     }
 
     // Method to clear all transactions (used when user logs out)
-    fun clearTransactions() {
-        viewModelScope.launch {
-            transactionDao.clearTransactions()
-            updateStatistics()
-        }
+    fun clearTransactions() = viewModelScope.launch {
+        transactionDao.clearTransactions()
+        updateStatistics()
     }
 
     // Method to set transactions (used when fetching user transactions from Firestore)
-    fun setTransactions(transactions: List<Transaction>) {
-        viewModelScope.launch {
-            transactionDao.clearTransactions()
-            transactions.forEach { transactionDao.insertTransaction(it) }
-            updateStatistics()
-        }
+    fun setTransactions(transactions: List<Transaction>) = viewModelScope.launch {
+        transactionDao.clearTransactions()
+        transactions.forEach { transactionDao.insertTransaction(it) }
+        updateStatistics()
     }
 
     // Load transactions for a specific date range
-    fun loadTransactionsByDateRange(startTime: Long, endTime: Long) {
-        viewModelScope.launch {
-            val filteredList = transactionDao.getTransactionsByDateRange(startTime, endTime)
-            _filteredTransactions.value = filteredList
-        }
+    fun loadTransactionsByDateRange(startTime: Long, endTime: Long) = viewModelScope.launch {
+        val filteredList = transactionDao.getTransactionsByDateRange(startTime, endTime)
+        _filteredTransactions.value = filteredList
     }
 
     // Add these convenience methods
@@ -161,47 +212,179 @@ class TransactionViewModel(private val database: TransactionDatabase) : ViewMode
     }
 
     // Load all transactions
-    fun loadAllTransactions() {
-        viewModelScope.launch {
-            val allTransactions =
-                transactionDao.getAllTransactions().first() // Convert Flow to List
-            _filteredTransactions.value = allTransactions
-        }
+    fun loadAllTransactions() = viewModelScope.launch {
+        val allTransactions = transactionDao.getAllTransactions().first() // Convert Flow to List
+        _filteredTransactions.value = allTransactions
     }
 
     // Method to start listening to Firestore updates for the user's transactions
     fun startListeningToTransactions(userId: String) {
-        // First load all data
-        loadFromFirestore(userId)
+        // Stop any existing listener first
+        stopListeningToTransactions()
 
-        // Then set up continuous listener
-        transactionListener =
-            firestore.collection("users").document(userId).collection("transactions")
+        Log.d("TransactionViewModel", "Starting Firestore listener for user $userId")
+
+        // Start a new listener that will continuously sync changes
+        try {
+            transactionListener = firestore.collection("users").document(userId)
+                .collection("transactions")
                 .addSnapshotListener { snapshots, e ->
                     if (e != null) {
+                        Log.e("TransactionViewModel", "Firestore listener error", e)
                         return@addSnapshotListener
                     }
 
-                    val transactions =
-                        snapshots?.toObjects(Transaction::class.java) ?: return@addSnapshotListener
-                    setTransactions(transactions)
+                    if (snapshots == null) {
+                        Log.d("TransactionViewModel", "Null snapshot received")
+                        return@addSnapshotListener
+                    }
+
+                    if (snapshots.isEmpty) {
+                        Log.d("TransactionViewModel", "Empty snapshot received")
+                        return@addSnapshotListener
+                    }
+
+                    Log.d("TransactionViewModel", "Received ${snapshots.size()} transactions from Firestore")
+
+                    viewModelScope.launch {
+                        try {
+                            val transactions = mutableListOf<Transaction>()
+
+                            for (doc in snapshots.documents) {
+                                try {
+                                    // Manual deserialization to avoid Firestore issues
+                                    val id = (doc.getLong("id") ?: 0).toInt()
+                                    val name = doc.getString("name") ?: ""
+                                    val amount = doc.getDouble("amount") ?: 0.0
+                                    val date = doc.getLong("date") ?: 0L
+                                    val category = doc.getString("category") ?: ""
+                                    val merchant = doc.getString("merchant") ?: ""
+                                    val description = doc.getString("description") ?: ""
+
+                                    // Get document ID for future updates
+                                    val documentId = doc.id
+
+                                    // Create transaction with the correct fields
+                                    val transaction = Transaction(
+                                        id = id,
+                                        name = name,
+                                        amount = amount,
+                                        date = date,
+                                        category = category,
+                                        merchant = merchant,
+                                        description = description,
+                                        documentId = documentId,
+                                        userId = userId
+                                    )
+
+                                    transactions.add(transaction)
+                                } catch (e: Exception) {
+                                    Log.e("TransactionViewModel", "Error parsing document", e)
+                                    continue // Skip this document if there's an error
+                                }
+                            }
+
+                            // Only update if we have transactions
+                            if (transactions.isNotEmpty()) {
+                                Log.d("TransactionViewModel", "Updating local DB with ${transactions.size} transactions")
+
+                                // Merge with local transactions instead of replacing all
+                                val currentTransactions = transactionDao.getAllTransactions().first()
+                                val currentIds = currentTransactions.map { it.id }.toSet()
+
+                                for (transaction in transactions) {
+                                    if (transaction.id in currentIds) {
+                                        // Update existing transaction
+                                        transactionDao.updateTransaction(transaction)
+                                    } else {
+                                        // Add new transaction
+                                        transactionDao.insertTransaction(transaction)
+                                    }
+                                }
+
+                                updateStatistics()
+                            }
+                        } catch (e: Exception) {
+                            Log.e("TransactionViewModel", "Error processing Firestore data", e)
+                        }
+                    }
                 }
+
+            Log.d("TransactionViewModel", "Firestore listener successfully registered")
+        } catch (e: Exception) {
+            Log.e("TransactionViewModel", "Error setting up Firestore listener", e)
+        }
     }
 
+    // Load from Firestore once (not real-time)
     fun loadFromFirestore(userId: String) {
         viewModelScope.launch {
-            // First clear local transactions
-            transactionDao.clearTransactions()
+            Log.d("TransactionViewModel", "Loading transactions from Firestore for user $userId")
 
-            // Then load from Firestore
+            // Don't clear transactions, we'll merge them
             firestore.collection("users").document(userId).collection("transactions")
                 .get()
                 .addOnSuccessListener { result ->
-                    val transactions = result.toObjects(Transaction::class.java)
-                    setTransactions(transactions)
+                    Log.d("TransactionViewModel", "Got ${result.size()} transactions from Firestore")
+
+                    viewModelScope.launch {
+                        try {
+                            val transactions = mutableListOf<Transaction>()
+
+                            for (doc in result.documents) {
+                                try {
+                                    // Manual deserialization for better error handling
+                                    val id = (doc.getLong("id") ?: 0).toInt()
+                                    val name = doc.getString("name") ?: ""
+                                    val amount = doc.getDouble("amount") ?: 0.0
+                                    val date = doc.getLong("date") ?: 0L
+                                    val category = doc.getString("category") ?: ""
+                                    val merchant = doc.getString("merchant") ?: ""
+                                    val description = doc.getString("description") ?: ""
+                                    val documentId = doc.id
+
+                                    val transaction = Transaction(
+                                        id = id,
+                                        name = name,
+                                        amount = amount,
+                                        date = date,
+                                        category = category,
+                                        merchant = merchant,
+                                        description = description,
+                                        documentId = documentId,
+                                        userId = userId
+                                    )
+
+                                    transactions.add(transaction)
+                                } catch (e: Exception) {
+                                    Log.e("TransactionViewModel", "Error parsing document", e)
+                                }
+                            }
+
+                            if (transactions.isNotEmpty()) {
+                                // Smart merge with existing data
+                                val currentTransactions = transactionDao.getAllTransactions().first()
+                                val currentIds = currentTransactions.map { it.id }.toSet()
+
+                                for (transaction in transactions) {
+                                    if (transaction.id in currentIds) {
+                                        // Update existing transaction
+                                        transactionDao.updateTransaction(transaction)
+                                    } else {
+                                        // Add new transaction
+                                        transactionDao.insertTransaction(transaction)
+                                    }
+                                }
+
+                                updateStatistics()
+                            }
+                        } catch (e: Exception) {
+                            Log.e("TransactionViewModel", "Error processing Firestore data", e)
+                        }
+                    }
                 }
                 .addOnFailureListener { e ->
-                    // Handle error
+                    Log.e("TransactionViewModel", "Error loading from Firestore", e)
                 }
         }
     }
@@ -210,6 +393,7 @@ class TransactionViewModel(private val database: TransactionDatabase) : ViewMode
     fun stopListeningToTransactions() {
         transactionListener?.remove()
         transactionListener = null
+        Log.d("TransactionViewModel", "Stopped Firestore listener")
     }
 
     class Factory(private val database: TransactionDatabase) : ViewModelProvider.Factory {
