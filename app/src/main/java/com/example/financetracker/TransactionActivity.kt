@@ -13,7 +13,9 @@ import androidx.activity.viewModels
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.content.ContextCompat
 import com.example.financetracker.database.TransactionDatabase
+import com.example.financetracker.MainActivity
 import com.example.financetracker.database.entity.Transaction
+import com.example.financetracker.databinding.NavHeaderBinding
 import com.example.financetracker.viewmodel.TransactionViewModel
 import com.google.android.material.navigation.NavigationView
 import java.text.SimpleDateFormat
@@ -22,6 +24,8 @@ import java.util.Locale
 class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedListener {
 
     override fun getLayoutResourceId(): Int = R.layout.activity_transactions
+
+
 
     private lateinit var transactionTableLayout: TableLayout
 
@@ -76,6 +80,7 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
         // Initialize the navigation drawer
         setupNavigationDrawer()
     }
+
 
     private fun setupAddTransactionButton() {
         findViewById<Button>(R.id.addTransactionButton).setOnClickListener {

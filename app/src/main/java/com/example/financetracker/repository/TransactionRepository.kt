@@ -7,6 +7,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 class TransactionRepository(private val transactionDao: TransactionDao) {
@@ -49,6 +50,31 @@ class TransactionRepository(private val transactionDao: TransactionDao) {
             withContext(Dispatchers.IO) {
                 firestore.collection("users").document(userId).collection("transactions")
                     .document(transaction.id.toString()).delete()
+            }
+        }
+    }
+
+    suspend fun clearAllTransactions() {
+        withContext(Dispatchers.IO) {
+            transactionDao.clearTransactions()
+        }
+    }
+
+    suspend fun loadTransactionsFromFirestore(userId: String) {
+        withContext(Dispatchers.IO) {
+            try {
+                val result = firestore.collection("users").document(userId)
+                    .collection("transactions").get().await()
+
+                val transactions = result.toObjects(Transaction::class.java)
+
+                // Clear existing transactions and insert new ones from Firestore
+                transactionDao.clearTransactions()
+                transactions.forEach {
+                    transactionDao.insertTransaction(it)
+                }
+            } catch (e: Exception) {
+                // Handle errors
             }
         }
     }

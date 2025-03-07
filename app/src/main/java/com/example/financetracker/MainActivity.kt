@@ -139,8 +139,18 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
     private fun addTransactionToFirestore(transaction: Transaction) {
         val userId = auth.currentUser?.uid ?: return
+        val transactionWithUserId = mapOf(
+            "id" to transaction.id,
+            "name" to transaction.name,
+            "amount" to transaction.amount,
+            "date" to transaction.date,
+            "category" to transaction.category,
+            "merchant" to transaction.merchant,
+            "description" to transaction.description,
+            "userId" to userId
+        )
         firestore.collection("users").document(userId).collection("transactions")
-            .add(transaction)
+            .add(transactionWithUserId)
             .addOnSuccessListener {
                 Toast.makeText(this, "Transaction added to Firestore", Toast.LENGTH_SHORT).show()
             }
@@ -191,11 +201,11 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         // Initialize the toggle
         toggle = ActionBarDrawerToggle(
             this,
-            drawerLayout,
+            binding.drawerLayout,
             R.string.navigation_drawer_open,
             R.string.navigation_drawer_close
         )
-        drawerLayout.addDrawerListener(toggle)
+        binding.drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
     }
 
@@ -203,12 +213,14 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         if (user == null) {
             // Clear transactions from local database when user logs out
             transactionViewModel.clearTransactions()
+            // Make sure to stop listening when logging out
+            transactionViewModel.stopListeningToTransactions()
             val intent = Intent(this, LoginActivity::class.java)
             startActivity(intent)
             finish()
         } else {
             // Fetch user transactions from Firestore when user logs in
-            fetchUserTransactions(user.uid)
+            transactionViewModel.startListeningToTransactions(user.uid)
         }
     }
 
@@ -218,6 +230,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             .addOnSuccessListener { result ->
                 val transactions = result.toObjects(Transaction::class.java)
                 transactionViewModel.setTransactions(transactions)
+                transactionViewModel.startListeningToTransactions(userId)
             }
             .addOnFailureListener { e ->
                 Toast.makeText(this, "Error fetching transactions: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -302,7 +315,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                     categoryStatsContainer,
                     false
                 )
-
                 categoryView.findViewById<TextView>(R.id.categoryName).text = category
                 categoryView.findViewById<TextView>(R.id.categoryMaxExpense).text =
                     getString(R.string.amount_format, categoryStats.maxExpense)
@@ -501,7 +513,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             }
         }
 
-        drawerLayout.closeDrawer(GravityCompat.START)
+        binding.drawerLayout.closeDrawer(GravityCompat.START)
         return true
     }
 
@@ -522,6 +534,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             .setMessage("Are you sure you want to logout?")
             .setPositiveButton("Yes") { _, _ ->
                 auth.signOut()
+                transactionViewModel.clearTransactions()
                 Toast.makeText(this, "Logged out successfully.", Toast.LENGTH_SHORT).show()
                 updateUI(null)
                 updateNavHeader()
@@ -553,7 +566,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         }
     }
 
-    private fun updateNavHeader() {
+    public fun updateNavHeader() {
         val currentUser = auth.currentUser
         if (currentUser != null) {
             headerBinding.userLoginText.text = currentUser.email

@@ -163,22 +163,47 @@ class TransactionViewModel(private val database: TransactionDatabase) : ViewMode
     // Load all transactions
     fun loadAllTransactions() {
         viewModelScope.launch {
-            val allTransactions = transactionDao.getAllTransactions().first() // Convert Flow to List
+            val allTransactions =
+                transactionDao.getAllTransactions().first() // Convert Flow to List
             _filteredTransactions.value = allTransactions
         }
     }
 
     // Method to start listening to Firestore updates for the user's transactions
     fun startListeningToTransactions(userId: String) {
-        transactionListener = firestore.collection("users").document(userId).collection("transactions")
-            .addSnapshotListener { snapshots, e ->
-                if (e != null) {
-                    return@addSnapshotListener
-                }
+        // First load all data
+        loadFromFirestore(userId)
 
-                val transactions = snapshots?.toObjects(Transaction::class.java) ?: return@addSnapshotListener
-                setTransactions(transactions)
-            }
+        // Then set up continuous listener
+        transactionListener =
+            firestore.collection("users").document(userId).collection("transactions")
+                .addSnapshotListener { snapshots, e ->
+                    if (e != null) {
+                        return@addSnapshotListener
+                    }
+
+                    val transactions =
+                        snapshots?.toObjects(Transaction::class.java) ?: return@addSnapshotListener
+                    setTransactions(transactions)
+                }
+    }
+
+    fun loadFromFirestore(userId: String) {
+        viewModelScope.launch {
+            // First clear local transactions
+            transactionDao.clearTransactions()
+
+            // Then load from Firestore
+            firestore.collection("users").document(userId).collection("transactions")
+                .get()
+                .addOnSuccessListener { result ->
+                    val transactions = result.toObjects(Transaction::class.java)
+                    setTransactions(transactions)
+                }
+                .addOnFailureListener { e ->
+                    // Handle error
+                }
+        }
     }
 
     // Method to stop listening to Firestore updates
