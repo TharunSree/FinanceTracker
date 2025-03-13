@@ -1,9 +1,11 @@
 package com.example.financetracker.viewmodel
 
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.*
 import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.database.entity.Transaction
+import com.example.financetracker.utils.GuestUserManager
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
@@ -12,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.Calendar
+import android.app.Application
 
 data class CategoryStatistics(
     val maxExpense: Double,
@@ -26,7 +29,10 @@ data class TransactionStatistics(
     val categoryStats: Map<String, CategoryStatistics>
 )
 
-class TransactionViewModel(private val database: TransactionDatabase) : ViewModel() {
+class TransactionViewModel(
+    private val database: TransactionDatabase,
+    application: Application
+) : AndroidViewModel(application) {
 
     private val transactionDao = database.transactionDao()
     private val firestore = FirebaseFirestore.getInstance()
@@ -115,12 +121,18 @@ class TransactionViewModel(private val database: TransactionDatabase) : ViewMode
 
     // Method to add a transaction
     fun addTransaction(transaction: Transaction) = viewModelScope.launch {
-        // Set user ID if not already set
+        // 1. Ensure transaction has userId (either authenticated or guest)
         if (transaction.userId.isNullOrEmpty()) {
-            transaction.userId = userId
+            transaction.userId = getUserId(getApplication())
         }
 
+        // 2. Insert into local database first
         transactionDao.insertTransaction(transaction)
+
+        // 3. Sync with Firestore only for authenticated users
+        syncTransactionToFirestore(transaction)
+
+        // 4. Update statistics
         updateStatistics()
     }
 
@@ -148,14 +160,25 @@ class TransactionViewModel(private val database: TransactionDatabase) : ViewMode
 
     // Method to update a transaction
     fun updateTransaction(transaction: Transaction) = viewModelScope.launch {
-        // Make sure userId is set
+        // 1. Ensure transaction has userId (either authenticated or guest)
         if (transaction.userId.isNullOrEmpty()) {
-            transaction.userId = userId
+            transaction.userId = getUserId(getApplication())
         }
 
+        // 2. Update in local database
         transactionDao.updateTransaction(transaction)
+
+        // 3. Sync with Firestore only for authenticated users
+        syncTransactionToFirestore(transaction)
+
+        // 4. Update statistics
         updateStatistics()
     }
+
+    private fun getUserId(context: Context): String {
+        return auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(context)
+    }
+
 
     // Method to clear all transactions (used when user logs out)
     fun clearTransactions() = viewModelScope.launch {
@@ -218,13 +241,19 @@ class TransactionViewModel(private val database: TransactionDatabase) : ViewMode
     }
 
     // Method to start listening to Firestore updates for the user's transactions
+    // Update the startListeningToTransactions method
     fun startListeningToTransactions(userId: String) {
+        // Skip for guest users
+        if (GuestUserManager.isGuestMode(userId)) {
+            Log.d("TransactionViewModel", "Skipping Firestore listener for guest user")
+            return
+        }
+
         // Stop any existing listener first
         stopListeningToTransactions()
 
         Log.d("TransactionViewModel", "Starting Firestore listener for user $userId")
 
-        // Start a new listener that will continuously sync changes
         try {
             transactionListener = firestore.collection("users").document(userId)
                 .collection("transactions")
@@ -239,20 +268,13 @@ class TransactionViewModel(private val database: TransactionDatabase) : ViewMode
                         return@addSnapshotListener
                     }
 
-                    if (snapshots.isEmpty) {
-                        Log.d("TransactionViewModel", "Empty snapshot received")
-                        return@addSnapshotListener
-                    }
-
-                    Log.d("TransactionViewModel", "Received ${snapshots.size()} transactions from Firestore")
-
                     viewModelScope.launch {
                         try {
                             val transactions = mutableListOf<Transaction>()
 
                             for (doc in snapshots.documents) {
                                 try {
-                                    // Manual deserialization to avoid Firestore issues
+                                    // Extract data from document
                                     val id = (doc.getLong("id") ?: 0).toInt()
                                     val name = doc.getString("name") ?: ""
                                     val amount = doc.getDouble("amount") ?: 0.0
@@ -260,11 +282,9 @@ class TransactionViewModel(private val database: TransactionDatabase) : ViewMode
                                     val category = doc.getString("category") ?: ""
                                     val merchant = doc.getString("merchant") ?: ""
                                     val description = doc.getString("description") ?: ""
+                                    val documentId =
+                                        doc.id // Always use the actual Firestore document ID
 
-                                    // Get document ID for future updates
-                                    val documentId = doc.id
-
-                                    // Create transaction with the correct fields
                                     val transaction = Transaction(
                                         id = id,
                                         name = name,
@@ -280,37 +300,33 @@ class TransactionViewModel(private val database: TransactionDatabase) : ViewMode
                                     transactions.add(transaction)
                                 } catch (e: Exception) {
                                     Log.e("TransactionViewModel", "Error parsing document", e)
-                                    continue // Skip this document if there's an error
+                                    continue
                                 }
                             }
 
-                            // Only update if we have transactions
-                            if (transactions.isNotEmpty()) {
-                                Log.d("TransactionViewModel", "Updating local DB with ${transactions.size} transactions")
+                            // Smart merge with existing data
+                            val currentTransactions = transactionDao.getAllTransactions().first()
+                            val firestoreDocIds = transactions.map { it.documentId }.toSet()
 
-                                // Merge with local transactions instead of replacing all
-                                val currentTransactions = transactionDao.getAllTransactions().first()
-                                val currentIds = currentTransactions.map { it.id }.toSet()
-
-                                for (transaction in transactions) {
-                                    if (transaction.id in currentIds) {
-                                        // Update existing transaction
-                                        transactionDao.updateTransaction(transaction)
-                                    } else {
-                                        // Add new transaction
-                                        transactionDao.insertTransaction(transaction)
-                                    }
+                            // Update or insert transactions from Firestore
+                            for (transaction in transactions) {
+                                val existingTransaction = currentTransactions.find {
+                                    it.documentId == transaction.documentId || it.id == transaction.id
                                 }
 
-                                updateStatistics()
+                                if (existingTransaction != null) {
+                                    transactionDao.updateTransaction(transaction)
+                                } else {
+                                    transactionDao.insertTransaction(transaction)
+                                }
                             }
+
+                            updateStatistics()
                         } catch (e: Exception) {
                             Log.e("TransactionViewModel", "Error processing Firestore data", e)
                         }
                     }
                 }
-
-            Log.d("TransactionViewModel", "Firestore listener successfully registered")
         } catch (e: Exception) {
             Log.e("TransactionViewModel", "Error setting up Firestore listener", e)
         }
@@ -325,7 +341,10 @@ class TransactionViewModel(private val database: TransactionDatabase) : ViewMode
             firestore.collection("users").document(userId).collection("transactions")
                 .get()
                 .addOnSuccessListener { result ->
-                    Log.d("TransactionViewModel", "Got ${result.size()} transactions from Firestore")
+                    Log.d(
+                        "TransactionViewModel",
+                        "Got ${result.size()} transactions from Firestore"
+                    )
 
                     viewModelScope.launch {
                         try {
@@ -363,7 +382,8 @@ class TransactionViewModel(private val database: TransactionDatabase) : ViewMode
 
                             if (transactions.isNotEmpty()) {
                                 // Smart merge with existing data
-                                val currentTransactions = transactionDao.getAllTransactions().first()
+                                val currentTransactions =
+                                    transactionDao.getAllTransactions().first()
                                 val currentIds = currentTransactions.map { it.id }.toSet()
 
                                 for (transaction in transactions) {
@@ -396,13 +416,81 @@ class TransactionViewModel(private val database: TransactionDatabase) : ViewMode
         Log.d("TransactionViewModel", "Stopped Firestore listener")
     }
 
-    class Factory(private val database: TransactionDatabase) : ViewModelProvider.Factory {
+    class Factory(
+        private val database: TransactionDatabase,
+        private val application: Application
+    ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(TransactionViewModel::class.java)) {
                 @Suppress("UNCHECKED_CAST")
-                return TransactionViewModel(database) as T
+                return TransactionViewModel(database, application) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class")
         }
     }
+
+    // Add a new method to sync transactions to Firestore
+    private fun syncTransactionToFirestore(transaction: Transaction) {
+        val userId = transaction.userId ?: return
+
+        // Skip Firestore for guest users
+        if (GuestUserManager.isGuestMode(userId)) {
+            return
+        }
+
+        try {
+            // Use document ID if available or create a new one
+            val docRef = if (transaction.documentId.isEmpty()) {
+                // Create a new document with auto-generated ID
+                firestore.collection("users")
+                    .document(userId)
+                    .collection("transactions")
+                    .document()
+            } else {
+                // Use existing document ID
+                firestore.collection("users")
+                    .document(userId)
+                    .collection("transactions")
+                    .document(transaction.documentId)
+            }
+
+            // If it's a new document, update transaction with the document ID
+            if (transaction.documentId.isEmpty()) {
+                transaction.documentId = docRef.id
+                // Update in local database with the document ID
+                viewModelScope.launch {
+                    transactionDao.updateTransaction(transaction)
+                }
+            }
+
+            // Create a map with all transaction data
+            val transactionMap = hashMapOf(
+                "id" to transaction.id,
+                "name" to transaction.name,
+                "amount" to transaction.amount,
+                "date" to transaction.date,
+                "category" to transaction.category,
+                "merchant" to transaction.merchant,
+                "description" to transaction.description,
+                "documentId" to transaction.documentId,
+                "userId" to userId
+            )
+
+            // Save to Firestore
+            docRef.set(transactionMap)
+                .addOnSuccessListener {
+                    Log.d(
+                        "TransactionViewModel",
+                        "Transaction synced to Firestore: ${transaction.id}"
+                    )
+                }
+                .addOnFailureListener { e ->
+                    Log.e("TransactionViewModel", "Failed to sync transaction to Firestore", e)
+                }
+        } catch (e: Exception) {
+            Log.e("TransactionViewModel", "Error syncing transaction to Firestore", e)
+        }
+    }
+
+
 }

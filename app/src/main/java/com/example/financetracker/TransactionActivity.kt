@@ -31,7 +31,7 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
 
     private val transactionViewModel: TransactionViewModel by viewModels {
         val database = TransactionDatabase.getDatabase(this)
-        TransactionViewModel.Factory(database)
+        TransactionViewModel.Factory(database, application)
     }
 
     private val addTransactionLauncher = registerForActivityResult(

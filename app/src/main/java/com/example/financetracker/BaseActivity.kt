@@ -39,18 +39,9 @@ abstract class BaseActivity : AppCompatActivity(), NavigationView.OnNavigationIt
     private fun checkAuthState() {
         val currentUser = auth.currentUser
         if (currentUser == null) {
-            Log.d(TAG, "User not logged in, redirecting to login")
-            // Redirect to login only if this is not already a login/registration activity
-            val loginActivityClass = LoginActivity::class.java
-            val registrationActivityClass = RegistrationActivity::class.java
-
-            if (this.javaClass != loginActivityClass && this.javaClass != registrationActivityClass) {
-                Log.d(TAG, "Redirecting to login from ${this.javaClass.simpleName}")
-                val intent = Intent(this, LoginActivity::class.java)
-                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                startActivity(intent)
-                finish()
-            }
+            Log.d(TAG, "No logged in user - continuing in guest mode")
+            // No redirection to login - allow using the app in guest mode
+            updateNavHeader() // Update header to show "Guest"
         } else {
             Log.d(TAG, "User logged in: ${currentUser.uid}")
         }

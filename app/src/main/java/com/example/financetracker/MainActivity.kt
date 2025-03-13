@@ -46,6 +46,7 @@ import com.google.android.material.navigation.NavigationView
 import com.example.financetracker.databinding.ActivityMainBinding
 import android.view.View
 import com.example.financetracker.database.dao.TransactionDao
+import com.example.financetracker.utils.GuestUserManager
 import kotlinx.coroutines.flow.first
 
 class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetailsListener {
@@ -61,7 +62,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
     private val transactionViewModel: TransactionViewModel by viewModels {
         val database = TransactionDatabase.getDatabase(this)
-        TransactionViewModel.Factory(database)
+        TransactionViewModel.Factory(database, application)
     }
 
     private val transactionDao by lazy {
@@ -87,6 +88,11 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             Manifest.permission.RECEIVE_SMS,
             Manifest.permission.READ_SMS
         )
+    }
+
+    private fun updateGuestModeBanner(isGuestMode: Boolean) {
+        val guestBanner = findViewById<TextView>(R.id.guestModeBanner)
+        guestBanner?.visibility = if (isGuestMode) View.VISIBLE else View.GONE
     }
 
     private val requestPermissionsLauncher =
@@ -157,13 +163,36 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         }
 
     private fun addTransactionToFirestore(transaction: Transaction) {
-        val userId = auth.currentUser?.uid ?: return
-        Log.d(TAG, "Adding transaction to Firestore for user: $userId")
+        // Get userId (either authenticated or guest)
+        val userId = auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(applicationContext)
+        val isGuestMode = GuestUserManager.isGuestMode(userId)
+
+        Log.d(TAG, "Adding transaction: userId=$userId, guestMode=$isGuestMode")
 
         // Ensure transaction has userId
         transaction.userId = userId
 
-        // Create a map with all fields
+        // For guest users, just add to Room database
+        if (isGuestMode) {
+            lifecycleScope.launch {
+                transactionViewModel.addTransaction(transaction)
+            }
+            return
+        }
+
+        // For authenticated users, create a document reference first to get an ID
+        val docRef = firestore.collection("users")
+            .document(userId)
+            .collection("transactions")
+            .document()
+
+        // Get the document ID
+        val docId = docRef.id
+
+        // Set the document ID in the transaction
+        transaction.documentId = docId
+
+        // Create a map with all transaction data
         val transactionMap = hashMapOf(
             "id" to transaction.id,
             "name" to transaction.name,
@@ -172,35 +201,28 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             "category" to transaction.category,
             "merchant" to transaction.merchant,
             "description" to transaction.description,
-            "userId" to userId  // Always include userId
+            "documentId" to docId,
+            "userId" to userId
         )
 
-        // First create a document reference to get an ID
-        val docRef = firestore.collection("users")
-            .document(userId)
-            .collection("transactions")
-            .document()
-
-        // Add the document ID to the transaction data
-        val docId = docRef.id
-        transactionMap["documentId"] = docId
-
-        // Now save the transaction
+        // Save to Firestore
         docRef.set(transactionMap)
             .addOnSuccessListener {
-                Log.d(TAG, "Transaction successfully added to Firestore with ID: $docId")
+                Log.d(TAG, "Transaction added to Firestore with ID: $docId")
 
-                // Update the local transaction with the document ID
+                // Update local database with document ID
                 lifecycleScope.launch {
-                    // Set the document ID and update in Room
-                    transaction.documentId = docId
                     transactionViewModel.updateTransaction(transaction)
                 }
             }
             .addOnFailureListener { e ->
                 Log.e(TAG, "Error adding transaction to Firestore", e)
-                Toast.makeText(this, "Error saving to cloud: ${e.message}", Toast.LENGTH_SHORT)
-                    .show()
+                Toast.makeText(this, "Error saving to cloud: ${e.message}", Toast.LENGTH_SHORT).show()
+
+                // Still save to local database even if Firestore fails
+                lifecycleScope.launch {
+                    transactionViewModel.addTransaction(transaction)
+                }
             }
     }
 
@@ -229,6 +251,15 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             Log.e(TAG, "Firebase initialization error", e)
             Toast.makeText(this, "Firebase init error: ${e.message}", Toast.LENGTH_SHORT).show()
         }
+
+        val userId = auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(applicationContext)
+
+        val isGuestMode = GuestUserManager.isGuestMode(userId)
+
+        // Update UI for guest mode
+        updateGuestModeBanner(isGuestMode)
+
+        transactionViewModel.startListeningToTransactions(userId)
 
         setupNavigationDrawer()
         setupPermissions()
