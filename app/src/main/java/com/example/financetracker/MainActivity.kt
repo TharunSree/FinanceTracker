@@ -608,13 +608,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     }
 
     override fun onDetailsEntered(merchant: String, category: String, saveAsPattern: Boolean) {
-        val userId = auth.currentUser?.uid
-
-        if (userId == null) {
-            Toast.makeText(this, "You must be logged in to save transactions", Toast.LENGTH_SHORT)
-                .show()
-            return
-        }
+        val userId = auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(applicationContext)
 
         currentTransaction?.let { transaction ->
             lifecycleScope.launch {
@@ -623,11 +617,9 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                 transaction.category = category
                 transaction.userId = userId  // Ensure userId is set
 
-                // Update in local database
+                // Use only the ViewModel to update - it will handle both Room and Firestore
                 transactionViewModel.updateTransaction(transaction)
-
-                // Update in Firestore
-                updateTransactionInFirestore(transaction)
+                // Remove the call to updateTransactionInFirestore - redundant
             }
         }
 
@@ -737,16 +729,22 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                 // Stop listening to Firestore updates
                 transactionViewModel.stopListeningToTransactions()
 
-                // Clear local transactions
-                transactionViewModel.clearTransactions()
+                // Clear local transactions and ensure UI is updated immediately
+                lifecycleScope.launch {
+                    // Clear transactions from database
+                    transactionViewModel.clearTransactions()
 
-                // Sign out from Firebase
-                auth.signOut()
+                    // Sign out from Firebase
+                    auth.signOut()
 
-                Toast.makeText(this, "Logged out successfully", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Logged out successfully", Toast.LENGTH_SHORT).show()
 
-                // Redirect to login screen
-                updateUI(null)
+                    // Redirect to login screen
+                    val intent = Intent(this@MainActivity, LoginActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    startActivity(intent)
+                    finish()
+                }
             }
             .setNegativeButton("No") { dialog, _ ->
                 dialog.dismiss()
@@ -869,9 +867,11 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         AlertDialog.Builder(this)
             .setTitle("New Transaction Detected")
             .setMessage("Would you like to add this transaction?\n\nMerchant: $merchant\nAmount: $${String.format("%.2f", amount)}\nDate: $dateStr")
+            // In showAddTransactionConfirmation method, update the Add button click handler:
             .setPositiveButton("Add") { _, _ ->
                 lifecycleScope.launch {
                     transactionViewModel.addTransaction(transaction)
+                    // Remove the addTransactionToFirestore call - it's redundant
                     Toast.makeText(this@MainActivity, "Transaction added", Toast.LENGTH_SHORT).show()
                 }
             }

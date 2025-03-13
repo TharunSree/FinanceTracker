@@ -181,9 +181,25 @@ class TransactionViewModel(
 
 
     // Method to clear all transactions (used when user logs out)
+    // Method to clear all transactions (used when user logs out)
     fun clearTransactions() = viewModelScope.launch {
+        // Clear from local database
         transactionDao.clearTransactions()
-        updateStatistics()
+
+        // Ensure the filtered transactions are also cleared immediately
+        _filteredTransactions.value = emptyList()
+
+        // Reset statistics
+        _transactionStatistics.postValue(
+            TransactionStatistics(
+                maxExpense = 0.0,
+                minExpense = 0.0,
+                totalExpense = 0.0,
+                categoryStats = emptyMap()
+            )
+        )
+
+        Log.d("TransactionViewModel", "All transactions cleared from local database")
     }
 
     // Method to set transactions (used when fetching user transactions from Firestore)
