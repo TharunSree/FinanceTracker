@@ -146,9 +146,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                         // Add to Room database
                         lifecycleScope.launch {
                             transactionViewModel.addTransaction(transaction)
-
-                            // Add to Firestore after adding to Room
-                            addTransactionToFirestore(transaction)
+                            // The transaction will be synced to Firestore by the ViewModel
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error adding transaction", e)
@@ -874,7 +872,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             .setPositiveButton("Add") { _, _ ->
                 lifecycleScope.launch {
                     transactionViewModel.addTransaction(transaction)
-                    addTransactionToFirestore(transaction)
                     Toast.makeText(this@MainActivity, "Transaction added", Toast.LENGTH_SHORT).show()
                 }
             }
