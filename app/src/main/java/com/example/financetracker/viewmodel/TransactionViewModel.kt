@@ -445,7 +445,7 @@ class TransactionViewModel(
         }
     }
 
-    // Add a new method to sync transactions to Firestore
+    // Replace the existing syncTransactionToFirestore method:
     private fun syncTransactionToFirestore(transaction: Transaction) {
         val userId = transaction.userId ?: return
 
@@ -492,12 +492,12 @@ class TransactionViewModel(
                 "userId" to userId
             )
 
-            // Save to Firestore
+            // Save to Firestore with a unique identifier to prevent duplicates
             docRef.set(transactionMap)
                 .addOnSuccessListener {
                     Log.d(
                         "TransactionViewModel",
-                        "Transaction synced to Firestore: ${transaction.id}"
+                        "Transaction synced to Firestore: ${transaction.id}, docId: ${transaction.documentId}"
                     )
                 }
                 .addOnFailureListener { e ->

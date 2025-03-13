@@ -108,4 +108,8 @@ interface TransactionDao {
      */
     @Query("SELECT COUNT(*) FROM transaction_table WHERE category = :category")
     suspend fun getTransactionCountByCategory(category: String): Int
+
+    // Add this query to TransactionDao:
+    @Query("SELECT * FROM transaction_table WHERE documentId = :docId AND userId = :userId LIMIT 1")
+    suspend fun getTransactionByDocId(docId: String, userId: String): Transaction?
 }
