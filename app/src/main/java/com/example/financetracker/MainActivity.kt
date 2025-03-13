@@ -611,15 +611,25 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         val userId = auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(applicationContext)
 
         currentTransaction?.let { transaction ->
-            lifecycleScope.launch {
-                // Update transaction details
-                transaction.name = merchant
-                transaction.category = category
-                transaction.userId = userId  // Ensure userId is set
+            // Critical fix: Preserve the original documentId if it exists
+            val existingDocId = transaction.documentId
 
-                // Use only the ViewModel to update - it will handle both Room and Firestore
+            // Update transaction details
+            transaction.name = merchant
+            transaction.category = category
+            transaction.userId = userId  // Ensure userId is set
+
+            // Preserve the document ID!
+            if (existingDocId.isNotEmpty()) {
+                transaction.documentId = existingDocId
+            }
+
+            // Log the documentId state
+            Log.d(TAG, "Updating transaction with documentId: ${transaction.documentId}")
+
+            lifecycleScope.launch {
+                // ONLY use the ViewModel to update - the ViewModel will handle Firestore
                 transactionViewModel.updateTransaction(transaction)
-                // Remove the call to updateTransactionInFirestore - redundant
             }
         }
 
@@ -633,6 +643,13 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     private fun updateTransactionInFirestore(transaction: Transaction) {
         val userId = auth.currentUser?.uid ?: return
 
+        // Check if this transaction has already been synced recently to prevent duplicates
+        if (transaction.documentId.isNotEmpty()) {
+            Log.d(TAG, "Using existing documentId: ${transaction.documentId}")
+        } else {
+            Log.d(TAG, "No documentId found, will generate one")
+        }
+
         // Create a map with all fields
         val transactionMap = hashMapOf(
             "id" to transaction.id,
@@ -645,16 +662,58 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             "userId" to userId
         )
 
-        // If the document ID exists in the transaction, use it
-        // Otherwise, create a new document in Firestore
+        // Get document ID - crucial change here
         val docId = if (!transaction.documentId.isNullOrEmpty()) {
+            // Use existing document ID
             transaction.documentId
         } else {
-            // Generate a new document ID if needed
-            firestore.collection("users")
-                .document(userId)
-                .collection("transactions")
-                .document().id
+            // Before generating a new ID, check if a transaction with same properties exists
+            lifecycleScope.launch {
+                try {
+                    val transactions = transactionDao.getAllTransactions().first()
+                    val matchingTransaction = transactions.find {
+                        it.userId == transaction.userId &&
+                                it.amount == transaction.amount &&
+                                Math.abs(it.date - transaction.date) < 60000 && // Within 1 minute
+                                it.name == transaction.name &&
+                                !it.documentId.isNullOrEmpty()
+                    }
+
+                    if (matchingTransaction != null) {
+                        Log.d(TAG, "Found matching transaction with docId: ${matchingTransaction.documentId}")
+                        // Use the existing document ID
+                        transaction.documentId = matchingTransaction.documentId
+                        transactionViewModel.updateTransaction(transaction)
+                        return@launch
+                    }
+
+                    // If no matching transaction found, generate a new document ID
+                    val newDocId = firestore.collection("users")
+                        .document(userId)
+                        .collection("transactions")
+                        .document().id
+
+                    transaction.documentId = newDocId
+                    transactionMap["documentId"] = newDocId
+
+                    // Update in Firestore with the new ID
+                    firestore.collection("users")
+                        .document(userId)
+                        .collection("transactions")
+                        .document(newDocId)
+                        .set(transactionMap)
+                        .addOnSuccessListener {
+                            Log.d(TAG, "Transaction successfully added to Firestore with new ID: $newDocId")
+                            transactionViewModel.updateTransaction(transaction)
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e(TAG, "Error updating transaction in Firestore", e)
+                        }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error checking for duplicate transactions", e)
+                }
+            }
+            return // Exit early as we're handling this in the coroutine
         }
 
         // Add document ID to the map
@@ -668,19 +727,10 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             .set(transactionMap)
             .addOnSuccessListener {
                 Log.d(TAG, "Transaction successfully updated in Firestore")
-
-                // Update document ID in transaction object if it was empty before
-                if (transaction.documentId.isNullOrEmpty()) {
-                    transaction.documentId = docId
-                    lifecycleScope.launch {
-                        transactionViewModel.updateTransaction(transaction)
-                    }
-                }
             }
             .addOnFailureListener { e ->
                 Log.e(TAG, "Error updating transaction in Firestore", e)
-                Toast.makeText(this, "Error updating in cloud: ${e.message}", Toast.LENGTH_SHORT)
-                    .show()
+                Toast.makeText(this, "Error updating in cloud: ${e.message}", Toast.LENGTH_SHORT).show()
             }
     }
 
