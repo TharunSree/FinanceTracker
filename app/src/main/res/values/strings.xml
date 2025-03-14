@@ -55,4 +55,36 @@
     <string name="navigation_drawer_open">Open navigation drawer</string>
     <string name="navigation_drawer_close">Close navigation drawer</string>
     <string name="edit">Edit</string>
+    <string-array name="currency_entries">
+        <item>Indian Rupee (₹)</item>
+        <item>US Dollar ($)</item>
+        <item>Euro (€)</item>
+        <item>British Pound (£)</item>
+        <item>Japanese Yen (¥)</item>
+    </string-array>
+
+    <string-array name="currency_values">
+        <item>INR</item>
+        <item>USD</item>
+        <item>EUR</item>
+        <item>GBP</item>
+        <item>JPY</item>
+    </string-array>
+
+    <!-- Theme arrays -->
+    <string-array name="theme_entries">
+        <item>System default</item>
+        <item>Light</item>
+        <item>Dark</item>
+    </string-array>
+
+    <string-array name="theme_values">
+        <item>system</item>
+        <item>light</item>
+        <item>dark</item>
+    </string-array>
+
+    <!-- Settings Tab Titles -->
+    <string name="tab_general">General</string>
+    <string name="tab_categories">Categories</string>
 </resources>
