@@ -86,50 +86,12 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
         }
     }
 
+    // In SmsBroadcastReceiver.kt
     private fun processMessage(context: Context, messageBody: String) {
-        coroutineScope.launch {
-            try {
-                Log.d(TAG, "Starting message processing with extractor")
-                val messageExtractor = MessageExtractor(context)
-                val details = messageExtractor.extractTransactionDetails(messageBody)
-
-                if (details != null) {
-                    Log.d(TAG, "Extracted details: $details")
-
-                    val transaction = Transaction(
-                        id = 0,
-                        name = details.merchant.ifBlank { "Unknown Merchant" },
-                        amount = details.amount,
-                        date = details.date,
-                        category = if (details.category == "Uncategorized") "" else details.category,
-                        merchant = details.merchant,
-                        description = details.description
-                    )
-
-                    // Save to Room database
-                    val database = TransactionDatabase.getDatabase(context)
-                    database.transactionDao().insertTransaction(transaction)
-                    Log.d(TAG, "Transaction successfully added to the Room database")
-
-                    // Save to Firestore
-                    addTransactionToFirestore(transaction)
-
-                    // Show appropriate notification
-                    if (transaction.name == "Unknown Merchant" || transaction.category.isBlank()) {
-                        showDetailsNeededNotification(context, transaction, messageBody)
-                    } else {
-                        showTransactionNotification(context, transaction)
-                    }
-                } else {
-                    Log.e(TAG, "Could not extract transaction details from message: $messageBody")
-                    showFailureNotification(context, messageBody)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error processing message", e)
-                e.printStackTrace()
-                showFailureNotification(context, messageBody)
-            }
-        }
+        // REMOVE THIS ENTIRE METHOD OR MAKE IT JUST LOG INSTEAD OF SAVING TRANSACTIONS
+        // Let the SmsProcessingService handle everything
+        Log.d(TAG, "Forwarding message to SmsProcessingService for processing")
+        // No further processing here
     }
 
     private fun addTransactionToFirestore(transaction: Transaction) {

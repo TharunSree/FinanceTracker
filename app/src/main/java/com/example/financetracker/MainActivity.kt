@@ -11,6 +11,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.provider.Telephony
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
@@ -45,6 +46,7 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.navigation.NavigationView
 import com.example.financetracker.databinding.ActivityMainBinding
 import android.view.View
+import androidx.core.app.NotificationCompat
 import com.example.financetracker.database.dao.TransactionDao
 import com.example.financetracker.utils.GuestUserManager
 import kotlinx.coroutines.flow.first
@@ -228,6 +230,67 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Add this to your MainActivity's onCreate() method
+        findViewById<Button>(R.id.testSmsButton).setOnClickListener {
+            // Show toast for user feedback
+            Toast.makeText(this, "Testing SMS receiver...", Toast.LENGTH_SHORT).show()
+
+            // Create debug notification
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    "debug_channel",
+                    "Debug Information",
+                    NotificationManager.IMPORTANCE_LOW
+                )
+                notificationManager.createNotificationChannel(channel)
+            }
+
+            // Show debug notification
+            val notification = NotificationCompat.Builder(this, "debug_channel")
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("SMS Debug")
+                .setContentText("Testing SMS receiver functionality")
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build()
+
+            notificationManager.notify(System.currentTimeMillis().toInt(), notification)
+
+            // Run test
+            testSmsReceiver()
+
+            // Create a mock financial message for testing
+            val mockSender = "HDFCBK"
+            val mockMessage = "Your account has been debited with Rs 1500.00 for Amazon payment. Transaction ID: HDFC12345."
+
+            // Log details
+            Log.d("SMS_TEST", "Testing with mock message from $mockSender: $mockMessage")
+
+            // Try to process the mock message directly
+            val messageExtractor = MessageExtractor(this)
+            lifecycleScope.launch {
+                try {
+                    val details = messageExtractor.extractTransactionDetails(mockMessage)
+                    if (details != null) {
+                        Log.d("SMS_TEST", "Successfully extracted details: $details")
+                        Toast.makeText(this@MainActivity,
+                            "Test successful! Found: Rs ${details.amount} from ${details.merchant}",
+                            Toast.LENGTH_LONG).show()
+                    } else {
+                        Log.d("SMS_TEST", "Failed to extract details from test message")
+                        Toast.makeText(this@MainActivity,
+                            "Test extraction failed - no details found",
+                            Toast.LENGTH_LONG).show()
+                    }
+                } catch (e: Exception) {
+                    Log.e("SMS_TEST", "Error in test extraction", e)
+                    Toast.makeText(this@MainActivity,
+                        "Error: ${e.message}",
+                        Toast.LENGTH_LONG).show()
+                }
+            }
+        }
 
         // Initialize Firebase Auth and Firestore with logging
         try {
@@ -478,8 +541,9 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
     private fun registerSmsReceiver() {
         smsBroadcastReceiver = SmsBroadcastReceiver()
-        val filter = IntentFilter("android.provider.Telephony.SMS_RECEIVED")
+        val filter = IntentFilter(Telephony.Sms.Intents.SMS_RECEIVED_ACTION)
         registerReceiver(smsBroadcastReceiver, filter)
+        Log.d(TAG, "SMS receiver registered with action: ${Telephony.Sms.Intents.SMS_RECEIVED_ACTION}")
     }
 
     private fun setupStatisticsButton() {
@@ -509,6 +573,32 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                     updateFilterStatus(filteredTransactions.size)
                 }
             }
+        }
+    }
+
+    // Add this function to your MainActivity
+    fun testSmsReceiver() {
+        try {
+            // Check if receiver is registered
+            val isInitialized = SmsBroadcastReceiver.isInitialized
+            Log.d(TAG, "SMS Receiver initialized: $isInitialized")
+
+            // Try to create a simulated SMS intent for testing
+            val intent = Intent(Telephony.Sms.Intents.SMS_RECEIVED_ACTION)
+            val bundle = Bundle()
+            bundle.putString("sender", "SBIUPI")
+            bundle.putString("message", "Your account has been debited with Rs 100.00 for GPAY payment.")
+            intent.putExtras(bundle)
+
+            // Log the receiver status
+            Toast.makeText(this, "SMS Receiver status: ${if (isInitialized) "Initialized" else "Not Initialized"}",
+                Toast.LENGTH_LONG).show()
+
+            // Register receiver again just to be sure
+            registerSmsReceiver()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error testing SMS receiver", e)
+            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -609,6 +699,8 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
     override fun onDetailsEntered(merchant: String, category: String, saveAsPattern: Boolean) {
         val userId = auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(applicationContext)
+
+        transactionViewModel.saveMerchant(merchant, category, userId)
 
         currentTransaction?.let { transaction ->
             // Critical fix: Preserve the original documentId if it exists

@@ -4,16 +4,31 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import com.example.financetracker.database.dao.BudgetDao
+import com.example.financetracker.database.dao.CategoryDao
 import com.example.financetracker.database.dao.MerchantDao
 import com.example.financetracker.database.dao.TransactionDao
+import com.example.financetracker.database.entity.Budget
 import com.example.financetracker.database.entity.Merchant
 import com.example.financetracker.database.entity.Transaction
+import com.example.financetracker.database.entity.Category
 
-@Database(entities = [Transaction::class, Merchant::class], version = 5, exportSchema = false)
+
+@Database(
+    entities = [
+        Transaction::class,
+        Merchant::class,
+        Category::class,
+        Budget::class
+    ],
+    version = 6,
+    exportSchema = false
+)
 abstract class TransactionDatabase : RoomDatabase() {
-
     abstract fun transactionDao(): TransactionDao
-    abstract fun merchantDao(): MerchantDao // Add this line for MerchantDao
+    abstract fun merchantDao(): MerchantDao
+    abstract fun categoryDao(): CategoryDao
+    abstract fun budgetDao(): BudgetDao
 
     companion object {
         @Volatile

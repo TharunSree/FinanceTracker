@@ -8,20 +8,20 @@ junit = "4.13.2"
 junitVersion = "1.2.1"
 espressoCore = "3.6.1"
 lifecycleRuntimeKtx = "2.8.7"
-activityCompose = "1.10.0"
-composeBom = "2025.02.00"
+activityCompose = "1.10.1"
+composeBom = "2025.03.00"
 recyclerview = "1.4.0"
 room = "2.6.1"
 junitJunit = "4.13.2"
 material = "1.12.0"
 
 [libraries]
-androidx-databinding = "androidx.databinding:databinding-runtime:8.8.1"
+androidx-databinding = "androidx.databinding:databinding-runtime:8.9.0"
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 androidx-appcompat = "androidx.appcompat:appcompat:1.7.0"
-androidx-constraintlayout = "androidx.constraintlayout:constraintlayout:2.2.0"
+androidx-constraintlayout = "androidx.constraintlayout:constraintlayout:2.2.1"
 
 # Lifecycle (ViewModel and LiveData)
 androidx-lifecycle-viewmodel = "androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7"
@@ -53,8 +53,9 @@ junit-junit = { group = "junit", name = "junit", version.ref = "junitJunit" }
 smart-reply = 'com.google.mlkit:smart-reply:17.0.4'
 entity-extraction = 'com.google.mlkit:entity-extraction:16.0.0-beta5'
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
-google-gemini = "com.google.ai.client.generativeai:generativeai:0.2.1"
+google-gemini = "com.google.ai.client.generativeai:generativeai:0.9.0"
 kotlinx-serialization = "org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1"
+androidx-preference =  "androidx.preference:preference:1.2.1"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -70,6 +70,7 @@ dependencies {
     implementation(libs.junit.junit)
     implementation(libs.material)
     kapt(libs.androidx.room.compiler)
+    implementation(libs.androidx.preference)
     implementation(libs.google.gemini)
     implementation(libs.androidx.databinding)
     implementation(libs.androidx.appcompat)

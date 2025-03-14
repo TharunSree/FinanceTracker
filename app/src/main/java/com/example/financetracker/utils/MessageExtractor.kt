@@ -2,7 +2,11 @@ package com.example.financetracker.utils
 
 import android.content.Context
 import android.util.Log
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.mlkit.nl.entityextraction.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.coroutines.resume
@@ -85,6 +89,27 @@ class MessageExtractor(private val context: Context) {
                     continuation.resume(null)
                 }
         }
+
+    private suspend fun getCategoryForMerchant(merchant: String, userId: String?): String {
+        userId ?: return "Uncategorized"
+
+        return try {
+            withContext(Dispatchers.IO) {
+                val merchantDoc = FirebaseFirestore.getInstance()
+                    .collection("users")
+                    .document(userId)
+                    .collection("merchants")
+                    .document(merchant)
+                    .get()
+                    .await()
+
+                merchantDoc.getString("category") ?: "Uncategorized"
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting category for merchant", e)
+            "Uncategorized"
+        }
+    }
 
     private fun processAnnotations(
         message: String,

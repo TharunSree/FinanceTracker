@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import android.app.Application
+import com.example.financetracker.database.entity.Merchant
 
 data class CategoryStatistics(
     val maxExpense: Double,
@@ -253,6 +254,31 @@ class TransactionViewModel(
     fun loadTransactionsByDateRange(startTime: Long, endTime: Long) = viewModelScope.launch {
         val filteredList = transactionDao.getTransactionsByDateRange(startTime, endTime)
         _filteredTransactions.value = filteredList
+    }
+
+    fun saveMerchant(merchantName: String, category: String, userId: String) {
+        viewModelScope.launch {
+            // Save to Room database
+            val merchant = Merchant(
+                id = 0,
+                name = merchantName,
+                category = category,
+                userId = userId // Add userId field to Merchant entity
+            )
+            database.merchantDao().insertMerchant(merchant)
+
+            // Save to Firestore (under user's merchants collection)
+            if (!GuestUserManager.isGuestMode(userId)) {
+                firestore.collection("users")
+                    .document(userId)
+                    .collection("merchants")
+                    .document(merchantName)
+                    .set(mapOf(
+                        "name" to merchantName,
+                        "category" to category
+                    ))
+            }
+        }
     }
 
     // Add these convenience methods
