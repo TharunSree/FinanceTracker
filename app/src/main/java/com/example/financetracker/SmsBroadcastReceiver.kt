@@ -16,17 +16,23 @@ import com.example.financetracker.utils.MessageExtractor
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 class SmsBroadcastReceiver : BroadcastReceiver() {
 
-    private val coroutineScope = CoroutineScope(Dispatchers.IO)
+    // Use SupervisorJob to prevent cancellation of all coroutines if one fails
+    private val job = SupervisorJob()
+    private val coroutineScope = CoroutineScope(Dispatchers.IO + job)
     private val firestore = FirebaseFirestore.getInstance()
 
     companion object {
         private const val TAG = "SmsBroadcastReceiver"
         private const val TRANSACTION_CHANNEL_ID = "transaction_channel"
         private const val DETAILS_CHANNEL_ID = "details_channel"
+
+        // Add a static property to track receiver initialization
+        var isInitialized = false
     }
 
     override fun onReceive(context: Context?, intent: Intent?) {
@@ -35,9 +41,12 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
             return
         }
 
-        Log.d(TAG, "Received intent with action: ${intent.action}")
+        // Create a debug notification to confirm receiver is working
+        debugNotification(context, "SMS Receiver triggered: ${intent.action}")
+        Log.d(TAG, "SMS BroadcastReceiver activated with action: ${intent.action}")
+        isInitialized = true
 
-        if (intent.action == "android.provider.Telephony.SMS_RECEIVED") {
+        if (intent.action == Telephony.Sms.Intents.SMS_RECEIVED_ACTION) {
             val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
 
             messages?.forEach { smsMessage ->
@@ -45,20 +54,42 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
                 val messageBody = smsMessage.messageBody
 
                 Log.d(TAG, "SMS from: $sender")
-                Log.d(TAG, "Message: $messageBody")
+                Log.d(TAG, "Message body: $messageBody")
 
-                if (isFinancialMessage(sender)) {
-                    Log.d(TAG, "Financial message detected")
+                // Always create a notification with basic SMS info for debugging
+                debugNotification(context, "SMS from $sender: ${messageBody.take(20)}...")
+
+                if (isFinancialMessage(sender, messageBody)) {
+                    Log.d(TAG, "Financial message detected from sender: $sender")
                     createNotificationChannels(context)
+
+                    // Start a foreground service to process the message reliably
+                    val serviceIntent = Intent(context, SmsProcessingService::class.java).apply {
+                        putExtra("sender", sender)
+                        putExtra("message", messageBody)
+                    }
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(serviceIntent)
+                    } else {
+                        context.startService(serviceIntent)
+                    }
+
+                    // Also try processing directly as a backup
                     processMessage(context, messageBody)
+                } else {
+                    Log.d(TAG, "Not a financial message from: $sender")
                 }
             }
+        } else {
+            Log.d(TAG, "Ignoring non-SMS intent: ${intent.action}")
         }
     }
 
     private fun processMessage(context: Context, messageBody: String) {
         coroutineScope.launch {
             try {
+                Log.d(TAG, "Starting message processing with extractor")
                 val messageExtractor = MessageExtractor(context)
                 val details = messageExtractor.extractTransactionDetails(messageBody)
 
@@ -90,11 +121,12 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
                         showTransactionNotification(context, transaction)
                     }
                 } else {
-                    Log.e(TAG, "Could not extract transaction details")
+                    Log.e(TAG, "Could not extract transaction details from message: $messageBody")
                     showFailureNotification(context, messageBody)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing message", e)
+                e.printStackTrace()
                 showFailureNotification(context, messageBody)
             }
         }
@@ -139,7 +171,49 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
                 enableVibration(true)
                 notificationManager.createNotificationChannel(this)
             }
+
+            // Debug channel
+            NotificationChannel(
+                "debug_channel",
+                "Debug Information",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Debug notifications for app troubleshooting"
+                notificationManager.createNotificationChannel(this)
+            }
         }
+    }
+
+    // Create a debug notification to help troubleshoot background processing
+    private fun debugNotification(context: Context, message: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notificationManager =
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            NotificationChannel(
+                "debug_channel",
+                "Debug Information",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Debug notifications for app troubleshooting"
+                notificationManager.createNotificationChannel(this)
+            }
+        }
+
+        val notification = NotificationCompat.Builder(context, "debug_channel")
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("SMS Debug")
+            .setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+
+        val notificationManager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        notificationManager.notify(
+            System.currentTimeMillis().toInt(),
+            notification
+        )
     }
 
     private fun showDetailsNeededNotification(
@@ -153,6 +227,8 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
             putExtra("TRANSACTION_MESSAGE", message)
             putExtra("TRANSACTION_AMOUNT", transaction.amount)
             putExtra("TRANSACTION_DATE", transaction.date)
+            putExtra("TRANSACTION_MERCHANT", transaction.merchant)
+            putExtra("TRANSACTION_DESCRIPTION", transaction.description)
         }
 
         val pendingIntent = PendingIntent.getActivity(
@@ -217,13 +293,30 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
         )
     }
 
-    private fun isFinancialMessage(sender: String): Boolean {
+    private fun isFinancialMessage(sender: String, message: String): Boolean {
+        // Expanded list of financial senders
         val financialSenders = listOf(
             "SBIUPI", "SBI", "SBIPSG", "HDFCBK", "ICICI", "AXISBK", "PAYTM",
             "GPAY", "PHONEPE", "-SBIINB", "-HDFCBK", "-ICICI", "-AXISBK",
             "CENTBK", "BOIIND", "PNBSMS", "CANBNK", "UNIONB", "8301967659",
-            "JUSPAY", "APAY"
+            "JUSPAY", "APAY", "VNPAY", "KOTAKB", "INDUSB", "YESBNK",
+            "BARODBNK", "IDFC", "IDBI", "ALLBANK", "FM-BOBSMS", "JM-BOBMBS",
+            "VM-CENTBN", "JD-INDUSB", "VM-BOBTXN"
         )
-        return financialSenders.any { sender.contains(it, ignoreCase = true) }
+
+        // More comprehensive detection - check sender and keywords in message
+        val financialKeywords = listOf(
+            "debited", "credited", "transaction", "txn", "a/c", "account",
+            "payment", "received", "sent", "transfer", "upi", "debit card",
+            "credit card", "balance", "spent", "paid"
+        )
+
+        val isSenderFinancial = financialSenders.any { sender.contains(it, ignoreCase = true) }
+        val containsFinancialKeywords = financialKeywords.any { message.contains(it, ignoreCase = true) }
+
+        Log.d(TAG, "Is sender financial: $isSenderFinancial, Contains financial keywords: $containsFinancialKeywords")
+
+        // Return true if either condition is met - this makes detection more robust
+        return isSenderFinancial || containsFinancialKeywords
     }
 }

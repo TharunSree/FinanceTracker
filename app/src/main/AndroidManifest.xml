@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <uses-feature
         android:name="android.hardware.telephony"
@@ -48,11 +51,19 @@
         <activity android:name=".RegistrationActivity" />
         <activity android:name=".StatisticsActivity" />
 
+        <!-- SMS Processing Service -->
+        <service
+            android:name=".SmsProcessingService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <!-- SMS Receiver -->
         <receiver
             android:name=".SmsBroadcastReceiver"
             android:enabled="true"
             android:exported="true"
+            android:directBootAware="true"
             android:permission="android.permission.BROADCAST_SMS">
             <intent-filter android:priority="999">
                 <action android:name="android.provider.Telephony.SMS_RECEIVED" />
