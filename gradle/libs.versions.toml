@@ -53,6 +53,8 @@ junit-junit = { group = "junit", name = "junit", version.ref = "junitJunit" }
 smart-reply = 'com.google.mlkit:smart-reply:17.0.4'
 entity-extraction = 'com.google.mlkit:entity-extraction:16.0.0-beta5'
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+google-gemini = "com.google.ai.client.generativeai:generativeai:0.2.1"
+kotlinx-serialization = "org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -60,6 +62,7 @@ kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-kapt = { id = "kotlin-kapt" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version = "1.9.0" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version = "1.8.10" }
 android-library = { id = "com.android.library", version = "8.1.4" }
 androidx-room = { id = "androidx.room", version.ref = "room" }
 google-services = { id = "com.google.gms.google-services", version = "4.4.2" }

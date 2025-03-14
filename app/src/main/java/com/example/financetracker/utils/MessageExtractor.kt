@@ -1,6 +1,7 @@
 package com.example.financetracker.utils
 
 import android.content.Context
+import android.util.Log
 import com.google.mlkit.nl.entityextraction.*
 import java.text.SimpleDateFormat
 import java.util.*
@@ -8,9 +9,14 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
 class MessageExtractor(private val context: Context) {
+    private val TAG = "MessageExtractor"
+
     private val entityExtractor = EntityExtraction.getClient(
         EntityExtractorOptions.Builder(EntityExtractorOptions.ENGLISH).build()
     )
+
+    // Initialize Gemini extractor with the API key from config
+    private val geminiExtractor = GeminiMessageExtractor(context, ApiConfig.GEMINI_API_KEY)
 
     private val currencyPatterns = mapOf(
         "INR" to listOf(
@@ -45,7 +51,27 @@ class MessageExtractor(private val context: Context) {
         SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH)
     )
 
-    suspend fun extractTransactionDetails(message: String): TransactionDetails? =
+    // Modified extraction function to try Gemini first, with fallback to regex
+    suspend fun extractTransactionDetails(message: String): TransactionDetails? {
+        try {
+            // Try Gemini extraction first
+            val geminiResult = geminiExtractor.extractTransactionDetails(message)
+            if (geminiResult != null) {
+                Log.d(TAG, "Successfully extracted with Gemini: $geminiResult")
+                return geminiResult
+            } else {
+                Log.d(TAG, "Gemini extraction returned null, falling back to regex")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error with Gemini extraction, falling back to regex", e)
+        }
+
+        // Fall back to the original regex-based extraction
+        return extractWithRegex(message)
+    }
+
+    // Original function renamed to extract with regex
+    private suspend fun extractWithRegex(message: String): TransactionDetails? =
         suspendCoroutine { continuation ->
             entityExtractor.downloadModelIfNeeded()
                 .addOnSuccessListener {
@@ -54,9 +80,15 @@ class MessageExtractor(private val context: Context) {
                             val details = processAnnotations(message, entityAnnotations)
                             continuation.resume(details)
                         }
-                        .addOnFailureListener { continuation.resume(null) }
+                        .addOnFailureListener {
+                            Log.e(TAG, "Entity annotation failed", it)
+                            continuation.resume(null)
+                        }
                 }
-                .addOnFailureListener { continuation.resume(null) }
+                .addOnFailureListener {
+                    Log.e(TAG, "Model download failed", it)
+                    continuation.resume(null)
+                }
         }
 
     private fun processAnnotations(
@@ -146,6 +178,9 @@ class MessageExtractor(private val context: Context) {
         } else null
     }
 }
+
+// This class is already defined at the bottom of your MessageExtractor.kt file
+// Keep it as is, do not change or duplicate it
 
 data class TransactionDetails(
     val amount: Double,

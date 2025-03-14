@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.kapt)
     alias(libs.plugins.androidx.room)
     alias(libs.plugins.google.services)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -69,9 +70,11 @@ dependencies {
     implementation(libs.junit.junit)
     implementation(libs.material)
     kapt(libs.androidx.room.compiler)
+    implementation(libs.google.gemini)
     implementation(libs.androidx.databinding)
     implementation(libs.androidx.appcompat)
     implementation(libs.firebase.auth)
+    implementation(libs.kotlinx.serialization)
     implementation(libs.firebase.firestore)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.recyclerview)
