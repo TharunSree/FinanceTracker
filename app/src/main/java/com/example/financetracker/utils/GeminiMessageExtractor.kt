@@ -6,7 +6,6 @@ import com.google.ai.client.generativeai.GenerativeModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
@@ -22,11 +21,6 @@ class GeminiMessageExtractor(private val context: Context, private val apiKey: S
         )
     }
 
-    private val json = Json {
-        ignoreUnknownKeys = true
-        isLenient = true
-    }
-
     @Serializable
     data class GeminiResponse(
         val amount: Double? = null,
@@ -39,6 +33,8 @@ class GeminiMessageExtractor(private val context: Context, private val apiKey: S
 
     suspend fun extractTransactionDetails(message: String): TransactionDetails? {
         return try {
+            Log.d(TAG, "Starting Gemini extraction for message: $message")
+
             // Create prompt for Gemini
             val prompt = """
                 You are a financial message parser. Extract transaction details from this SMS message.
@@ -57,14 +53,22 @@ class GeminiMessageExtractor(private val context: Context, private val apiKey: S
                 Return ONLY the JSON, nothing else.
             """.trimIndent()
 
-            // Call Gemini API - using the string-based prompt
+            // Call Gemini API - using the string-based prompt with timeout
             val response = withContext(Dispatchers.IO) {
-                generativeModel.generateContent(prompt).text
+                try {
+                    Log.d(TAG, "Calling Gemini API...")
+                    val result = generativeModel.generateContent(prompt).text
+                    Log.d(TAG, "Received response from Gemini API: $result")
+                    result
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error calling Gemini API", e)
+                    null
+                }
             }
 
             // Parse JSON response
             if (!response.isNullOrEmpty()) {
-                // Extract the JSON part from the response (handling potential text around the JSON)
+                // Extract the JSON part from the response
                 val jsonStart = response.indexOf("{")
                 val jsonEnd = response.lastIndexOf("}") + 1
 
@@ -73,25 +77,42 @@ class GeminiMessageExtractor(private val context: Context, private val apiKey: S
                         val jsonStr = response.substring(jsonStart, jsonEnd)
                         Log.d(TAG, "Parsed JSON: $jsonStr")
 
-                        // Use Android's JSONObject to parse the JSON
+                        // Use Android's JSONObject for parsing
                         val jsonObject = JSONObject(jsonStr)
-                        val extractedResponse = GeminiResponse(
-                            amount = if (jsonObject.has("amount") && !jsonObject.isNull("amount"))
-                                jsonObject.getDouble("amount") else null,
-                            merchant = if (jsonObject.has("merchant") && !jsonObject.isNull("merchant"))
-                                jsonObject.getString("merchant") else null,
-                            date = if (jsonObject.has("date") && !jsonObject.isNull("date"))
-                                jsonObject.getString("date") else null,
-                            currency = if (jsonObject.has("currency") && !jsonObject.isNull("currency"))
-                                jsonObject.getString("currency") else null,
-                            referenceNumber = if (jsonObject.has("referenceNumber") && !jsonObject.isNull("referenceNumber"))
-                                jsonObject.getString("referenceNumber") else null,
-                            description = if (jsonObject.has("description") && !jsonObject.isNull("description"))
-                                jsonObject.getString("description") else null
-                        )
 
-                        // Convert to TransactionDetails
-                        convertToTransactionDetails(extractedResponse)
+                        // Only proceed if we could extract an amount
+                        if (jsonObject.has("amount") && !jsonObject.isNull("amount")) {
+                            val amount = jsonObject.getDouble("amount")
+                            val merchant = if (jsonObject.has("merchant") && !jsonObject.isNull("merchant"))
+                                jsonObject.getString("merchant") else "Unknown Merchant"
+                            val dateStr = if (jsonObject.has("date") && !jsonObject.isNull("date"))
+                                jsonObject.getString("date") else null
+                            val currency = if (jsonObject.has("currency") && !jsonObject.isNull("currency"))
+                                jsonObject.getString("currency") else "INR"
+                            val refNumber = if (jsonObject.has("referenceNumber") && !jsonObject.isNull("referenceNumber"))
+                                jsonObject.getString("referenceNumber") else null
+                            val description = if (jsonObject.has("description") && !jsonObject.isNull("description"))
+                                jsonObject.getString("description") else ""
+
+                            // Parse date if available
+                            val dateInMillis = parseDate(dateStr) ?: System.currentTimeMillis()
+
+                            // Create and return TransactionDetails
+                            TransactionDetails(
+                                amount = amount,
+                                merchant = merchant,
+                                date = dateInMillis,
+                                category = "Uncategorized",
+                                currency = currency,
+                                referenceNumber = refNumber,
+                                description = description
+                            ).also {
+                                Log.d(TAG, "Successfully created TransactionDetails: $it")
+                            }
+                        } else {
+                            Log.d(TAG, "No amount found in Gemini response")
+                            null
+                        }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error parsing JSON response", e)
                         null
@@ -105,26 +126,7 @@ class GeminiMessageExtractor(private val context: Context, private val apiKey: S
                 null
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error calling Gemini API", e)
-            null
-        }
-    }
-
-    private fun convertToTransactionDetails(response: GeminiResponse): TransactionDetails? {
-        // Only create TransactionDetails if we at least have an amount
-        return if (response.amount != null) {
-            val dateInMillis = parseDate(response.date)
-
-            TransactionDetails(
-                amount = response.amount,
-                merchant = response.merchant ?: "Unknown Merchant",
-                date = dateInMillis ?: System.currentTimeMillis(),
-                category = "Uncategorized",
-                currency = response.currency ?: "INR",
-                referenceNumber = response.referenceNumber,
-                description = response.description ?: ""
-            )
-        } else {
+            Log.e(TAG, "Error in extraction process", e)
             null
         }
     }

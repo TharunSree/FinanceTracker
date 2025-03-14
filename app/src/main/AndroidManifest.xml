@@ -46,6 +46,7 @@
             android:exported="true" />
         <activity android:name=".LoginActivity" />
         <activity android:name=".RegistrationActivity" />
+        <activity android:name=".StatisticsActivity" />
 
         <!-- SMS Receiver -->
         <receiver
@@ -59,5 +60,21 @@
             </intent-filter>
         </receiver>
 
+        <!-- Add network security config if needed for API calls -->
+        <meta-data
+            android:name="com.google.android.gms.version"
+            android:value="@integer/google_play_services_version" />
+
+        <!-- Firebase services configuration, if not already added -->
+        <service
+            android:name="com.google.firebase.components.ComponentDiscoveryService"
+            android:directBootAware="true"
+            android:exported="false">
+            <meta-data
+                android:name="com.google.firebase.components:com.google.firebase.firestore.FirestoreRegistrar"
+                android:value="com.google.firebase.components.ComponentRegistrar" />
+        </service>
+
     </application>
+
 </manifest>

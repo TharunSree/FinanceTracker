@@ -15,18 +15,15 @@ class MessageExtractor(private val context: Context) {
         EntityExtractorOptions.Builder(EntityExtractorOptions.ENGLISH).build()
     )
 
-    // Initialize Gemini extractor with the API key from config
+    // Initialize Gemini extractor with API key
     private val geminiExtractor = GeminiMessageExtractor(context, ApiConfig.GEMINI_API_KEY)
 
     private val currencyPatterns = mapOf(
         "INR" to listOf(
             Regex("""(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)"""),
             Regex("""(?:INR|Rs\.?)\s*([\d,]+\.?\d*)"""),
-            // Pattern for "debited by" format
             Regex("""debited by\s*([\d,]+\.?\d*)""", RegexOption.IGNORE_CASE),
-            // Pattern for "Payment of Rs" format
             Regex("""Payment of Rs\s*([\d,]+\.?\d*)""", RegexOption.IGNORE_CASE),
-            // Pattern for "debited for INR" format
             Regex("""debited for INR\s*([\d,]+\.?\d*)""", RegexOption.IGNORE_CASE)
         ),
         "USD" to listOf(Regex("""\$\s*([\d,]+\.?\d*)""")),
@@ -35,11 +32,8 @@ class MessageExtractor(private val context: Context) {
     )
 
     private val merchantPatterns = listOf(
-        // Apay specific patterns
         Regex("""successful at\s+([A-Za-z0-9\s\-&@._]+?)(?:\.|$)""", RegexOption.IGNORE_CASE),
-        // UPI patterns
         Regex("""trf to\s+([A-Za-z0-9\s\-&@._]+?)(?:\s+Ref|$)""", RegexOption.IGNORE_CASE),
-        // Generic patterns
         Regex("""(?:at|to|paid to)\s+([A-Za-z0-9\s\-&@._]+?)(?:\s+(?:on|for|via|ref)|$)""", RegexOption.IGNORE_CASE),
         Regex("""(?:merchant|payee|receiver):\s*([A-Za-z0-9\s\-&@._]+?)(?:\s+|$)""", RegexOption.IGNORE_CASE)
     )
@@ -51,10 +45,11 @@ class MessageExtractor(private val context: Context) {
         SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH)
     )
 
-    // Modified extraction function to try Gemini first, with fallback to regex
+    // Main function that orchestrates extraction - now tries Gemini first
     suspend fun extractTransactionDetails(message: String): TransactionDetails? {
+        Log.d(TAG, "Starting extraction for message: $message")
         try {
-            // Try Gemini extraction first
+            // Try Gemini AI extraction first
             val geminiResult = geminiExtractor.extractTransactionDetails(message)
             if (geminiResult != null) {
                 Log.d(TAG, "Successfully extracted with Gemini: $geminiResult")
@@ -66,12 +61,12 @@ class MessageExtractor(private val context: Context) {
             Log.e(TAG, "Error with Gemini extraction, falling back to regex", e)
         }
 
-        // Fall back to the original regex-based extraction
-        return extractWithRegex(message)
+        // Fall back to original ML Kit + regex extraction
+        return extractWithRegexAndMlKit(message)
     }
 
-    // Original function renamed to extract with regex
-    private suspend fun extractWithRegex(message: String): TransactionDetails? =
+    // Original function renamed to extract with regex and ML Kit
+    private suspend fun extractWithRegexAndMlKit(message: String): TransactionDetails? =
         suspendCoroutine { continuation ->
             entityExtractor.downloadModelIfNeeded()
                 .addOnSuccessListener {
@@ -95,6 +90,7 @@ class MessageExtractor(private val context: Context) {
         message: String,
         entityAnnotations: List<EntityAnnotation>
     ): TransactionDetails? {
+        // The existing implementation remains unchanged
         var amount: Double? = null
         var currency = "INR" // Default currency
         var merchant: String? = null
@@ -179,9 +175,7 @@ class MessageExtractor(private val context: Context) {
     }
 }
 
-// This class is already defined at the bottom of your MessageExtractor.kt file
-// Keep it as is, do not change or duplicate it
-
+// Keep the TransactionDetails class as is
 data class TransactionDetails(
     val amount: Double,
     val merchant: String,
