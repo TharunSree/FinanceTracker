@@ -180,26 +180,66 @@ class TransactionViewModel(
     }
 
 
-    // Method to clear all transactions (used when user logs out)
-    // Method to clear all transactions (used when user logs out)
+    // Replace the existing clearTransactions method with this improved version
     fun clearTransactions() = viewModelScope.launch {
-        // Clear from local database
-        transactionDao.clearTransactions()
+        try {
+            Log.d("TransactionViewModel", "Starting transaction clearing process")
 
-        // Ensure the filtered transactions are also cleared immediately
-        _filteredTransactions.value = emptyList()
+            // Make sure to stop listening first
+            stopListeningToTransactions()
 
-        // Reset statistics
-        _transactionStatistics.postValue(
-            TransactionStatistics(
-                maxExpense = 0.0,
-                minExpense = 0.0,
-                totalExpense = 0.0,
-                categoryStats = emptyMap()
+            // Clear from local database with a blocking operation
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                transactionDao.clearTransactions()
+
+                // Double-check that transactions are cleared
+                val count = transactionDao.getAllTransactions().first().size
+                if (count > 0) {
+                    Log.w("TransactionViewModel", "First clearing attempt left $count transactions, trying again")
+                    // Try one more time
+                    transactionDao.clearTransactions()
+                }
+            }
+
+            // Ensure the filtered transactions are also cleared immediately
+            _filteredTransactions.value = emptyList()
+
+            // Reset statistics
+            _transactionStatistics.postValue(
+                TransactionStatistics(
+                    maxExpense = 0.0,
+                    minExpense = 0.0,
+                    totalExpense = 0.0,
+                    categoryStats = emptyMap()
+                )
             )
-        )
 
-        Log.d("TransactionViewModel", "All transactions cleared from local database")
+            Log.d("TransactionViewModel", "All transactions cleared from local database")
+
+            // Force the LiveData to emit an empty list
+            val emptyTransactionList = emptyList<Transaction>()
+            if (transactions.value?.isNotEmpty() == true) {
+                // This is a workaround to force the LiveData to update
+                // We need to trigger a change in the database that will cause the Flow to emit
+                val dummyTransaction = Transaction(
+                    id = -999,
+                    name = "DUMMY_FOR_CLEARING",
+                    amount = 0.0,
+                    date = System.currentTimeMillis(),
+                    category = "",
+                    merchant = "",
+                    description = "TO BE DELETED",
+                    documentId = "temp",
+                    userId = ""
+                )
+
+                // Insert and immediately delete to force Flow to emit
+                transactionDao.insertTransaction(dummyTransaction)
+                transactionDao.deleteTransaction(dummyTransaction)
+            }
+        } catch (e: Exception) {
+            Log.e("TransactionViewModel", "Error clearing transactions", e)
+        }
     }
 
     // Method to set transactions (used when fetching user transactions from Firestore)

@@ -734,6 +734,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             }
     }
 
+    // Override this method in MainActivity to use your existing confirmation dialog
     override fun onNavigationItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.nav_home -> {
@@ -771,37 +772,8 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         }
     }
 
-    private fun showLogoutConfirmationDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("Logout Confirmation")
-            .setMessage("Are you sure you want to logout?")
-            .setPositiveButton("Yes") { _, _ ->
-                // Stop listening to Firestore updates
-                transactionViewModel.stopListeningToTransactions()
+    // Replace your existing showLogoutConfirmationDialog method with this improved version
 
-                // Clear local transactions and ensure UI is updated immediately
-                lifecycleScope.launch {
-                    // Clear transactions from database
-                    transactionViewModel.clearTransactions()
-
-                    // Sign out from Firebase
-                    auth.signOut()
-
-                    Toast.makeText(this@MainActivity, "Logged out successfully", Toast.LENGTH_SHORT).show()
-
-                    // Redirect to login screen
-                    val intent = Intent(this@MainActivity, LoginActivity::class.java)
-                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                    startActivity(intent)
-                    finish()
-                }
-            }
-            .setNegativeButton("No") { dialog, _ ->
-                dialog.dismiss()
-            }
-            .create()
-            .show()
-    }
 
     private fun saveTransactionPattern(messageBody: String, merchant: String, category: String) {
         val pattern = TransactionPattern(messageBody, merchant, category)

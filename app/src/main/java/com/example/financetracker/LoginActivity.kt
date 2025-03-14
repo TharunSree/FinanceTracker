@@ -6,10 +6,14 @@ import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.databinding.ActivityLoginBinding
+import com.example.financetracker.viewmodel.TransactionViewModel
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.launch
 
 // LoginActivity should NOT extend BaseActivity since it doesn't need the navigation drawer
 class LoginActivity : AppCompatActivity() {
@@ -107,10 +111,29 @@ class LoginActivity : AppCompatActivity() {
             }
     }
 
+    private fun ensureCleanSlate() {
+        // Create an instance of the TransactionViewModel to clear any remaining data
+        val database = TransactionDatabase.getDatabase(this)
+        val viewModel = TransactionViewModel(database, application)
+
+        lifecycleScope.launch {
+            // Clear any lingering transactions from previous sessions
+            viewModel.clearTransactions()
+
+            // Small delay to ensure database operations complete
+            kotlinx.coroutines.delay(200)
+
+            Log.d("LoginActivity", "Database cleaned for new login")
+        }
+    }
+
     private fun updateUI(user: FirebaseUser?) {
         if (user != null) {
             // User is signed in, proceed to MainActivity
             val intent = Intent(this, MainActivity::class.java)
+
+            ensureCleanSlate()
+
             intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
             startActivity(intent)
             finish()

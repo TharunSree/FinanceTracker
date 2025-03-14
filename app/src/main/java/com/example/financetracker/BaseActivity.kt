@@ -1,17 +1,27 @@
 package com.example.financetracker
 
+import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.MenuItem
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
+import com.example.financetracker.database.TransactionDatabase
+import com.example.financetracker.viewmodel.TransactionViewModel
 import com.google.android.material.navigation.NavigationView
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 abstract class BaseActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener {
 
@@ -20,6 +30,9 @@ abstract class BaseActivity : AppCompatActivity(), NavigationView.OnNavigationIt
     protected open lateinit var auth: FirebaseAuth
     protected open lateinit var firestore: FirebaseFirestore
     private val TAG = "BaseActivity"
+
+    // Create our own coroutine scope
+    private val activityScope = CoroutineScope(Dispatchers.Main)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -123,13 +136,10 @@ abstract class BaseActivity : AppCompatActivity(), NavigationView.OnNavigationIt
                 // Handle settings navigation
             }
             R.id.nav_login_logout -> {
-                // Handle logout
+                // Handle login/logout
                 if (auth.currentUser != null) {
-                    auth.signOut()
-                    val intent = Intent(this, LoginActivity::class.java)
-                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                    startActivity(intent)
-                    finish()
+                    // Show logout confirmation dialog
+                    showLogoutConfirmationDialog()
                 } else {
                     val intent = Intent(this, LoginActivity::class.java)
                     startActivity(intent)
@@ -138,6 +148,91 @@ abstract class BaseActivity : AppCompatActivity(), NavigationView.OnNavigationIt
         }
         drawerLayout.closeDrawers()
         return true
+    }
+
+    // Add this method to BaseActivity
+    protected fun showLogoutConfirmationDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Logout Confirmation")
+            .setMessage("Are you sure you want to logout?")
+            .setPositiveButton("Yes") { _, _ ->
+                // Show a progress dialog
+                val progressDialog = AlertDialog.Builder(this)
+                    .setTitle("Logging Out")
+                    .setMessage("Please wait...")
+                    .setCancelable(false)
+                    .create()
+
+                progressDialog.show()
+
+                // Use the application context to get ViewModel
+                val database = TransactionDatabase.getDatabase(applicationContext)
+                val viewModel = TransactionViewModel(database, application)
+
+                // Stop listening to Firestore updates
+                viewModel.stopListeningToTransactions()
+
+                // Use our own coroutine scope instead of lifecycleScope
+                activityScope.launch {
+                    try {
+                        // Force synchronous execution
+                        withContext(Dispatchers.IO) {
+                            // Clear transactions directly from DAO
+                            database.transactionDao().clearTransactions()
+
+                            // Double-check if transactions are cleared
+                            val remaining = database.transactionDao().getAllTransactions().first()
+                            if (remaining.isNotEmpty()) {
+                                Log.w(TAG, "Warning: ${remaining.size} transactions still remain after clearing")
+                                // Try again
+                                database.transactionDao().clearTransactions()
+                            }
+                        }
+
+                        // Sign out
+                        auth.signOut()
+
+                        // Switch back to Main dispatcher for UI operations
+                        withContext(Dispatchers.Main) {
+                            // Dismiss progress dialog
+                            progressDialog.dismiss()
+
+                            // Show success message
+                            Toast.makeText(
+                                this@BaseActivity,
+                                "Logged out successfully",
+                                Toast.LENGTH_SHORT
+                            ).show()
+
+                            // Add a small delay to ensure operations complete
+                            delay(300)
+
+                            // Redirect to login
+                            val intent = Intent(this@BaseActivity, LoginActivity::class.java)
+                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            startActivity(intent)
+                            finish()
+                        }
+                    } catch (e: Exception) {
+                        // Switch back to Main dispatcher for UI operations
+                        withContext(Dispatchers.Main) {
+                            // Handle errors
+                            progressDialog.dismiss()
+                            Log.e(TAG, "Error during logout", e)
+                            Toast.makeText(
+                                this@BaseActivity,
+                                "Error during logout: ${e.message}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                }
+            }
+            .setNegativeButton("No") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .create()
+            .show()
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
