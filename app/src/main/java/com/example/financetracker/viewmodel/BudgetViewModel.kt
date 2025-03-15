@@ -4,21 +4,16 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
 import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.database.entity.Budget
-import com.example.financetracker.database.entity.Transaction
 import com.example.financetracker.utils.GuestUserManager
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
-import java.util.Date
 
 class BudgetViewModel(
     private val database: TransactionDatabase,
@@ -55,7 +50,7 @@ class BudgetViewModel(
             ?: GuestUserManager.getGuestUserId(getApplication())
 
         viewModelScope.launch {
-            budgetDao.getAllBudgets(userId).collect { budgetList ->
+            budgetDao.getAllBudgets(userId ?: "").collect { budgetList ->
                 _budgets.value = budgetList
                 calculateBudgetVsActual(budgetList)
             }
@@ -80,7 +75,7 @@ class BudgetViewModel(
 
         // Get all transactions within the date range
         val transactions = withContext(Dispatchers.IO) {
-            transactionDao.getTransactionsByDateRange(startDate, endDate, userId)
+            transactionDao.getTransactionsByDateRange(startDate, endDate, userId ?: "")
         }
 
         // Group transactions by category and calculate spent amounts
@@ -138,7 +133,7 @@ class BudgetViewModel(
 
             // Get all transactions within the date range
             val transactions = withContext(Dispatchers.IO) {
-                transactionDao.getTransactionsByDateRange(startDate, endDate, userId)
+                transactionDao.getTransactionsByDateRange(startDate, endDate, userId ?: "")
             }
 
             // Group expenses by category and calculate average monthly spending
@@ -154,7 +149,7 @@ class BudgetViewModel(
             }
 
             // Get existing budgets to avoid duplication
-            val existingBudgets = budgetDao.getAllBudgetsOneTime(userId)
+            val existingBudgets = budgetDao.getAllBudgetsOneTime(userId ?: "")
             val existingCategories = existingBudgets.map { it.category }
 
             // Create budget entities for categories without existing budgets
@@ -192,7 +187,7 @@ class BudgetViewModel(
             // Delete from Firestore if user is authenticated
             if (auth.currentUser != null && budget.documentId.isNotEmpty()) {
                 firestore.collection("users")
-                    .document(budget.userId)
+                    .document(budget.userId ?: "")
                     .collection("budgets")
                     .document(budget.documentId)
                     .delete()
@@ -206,7 +201,7 @@ class BudgetViewModel(
 
         // Create a document reference first to get an ID
         val docRef = firestore.collection("users")
-            .document(budget.userId)
+            .document(budget.userId ?: return)
             .collection("budgets")
             .document()
 

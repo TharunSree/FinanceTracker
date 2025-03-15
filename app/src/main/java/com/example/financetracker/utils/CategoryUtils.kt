@@ -4,52 +4,83 @@ import android.content.Context
 import android.widget.ArrayAdapter
 import android.widget.Spinner
 import com.example.financetracker.database.TransactionDatabase
+import com.example.financetracker.database.entity.Category
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 object CategoryUtils {
-
     /**
-     * Loads categories into the provided spinner
-     * @param context The activity context
-     * @param spinner The spinner to populate
-     * @param userId The current user ID
-     * @param selectedCategory Optional pre-selected category
+     * Load categories into a spinner from the database
      */
     suspend fun loadCategoriesToSpinner(
         context: Context,
         spinner: Spinner,
-        userId: String?,
+        userId: String,
         selectedCategory: String? = null
     ) {
         val database = TransactionDatabase.getDatabase(context)
 
-        // Get categories from Room database
-        val categories = database.categoryDao().getAllCategoriesOneTime(userId)
+        // Get categories from database
+        val categories = withContext(Dispatchers.IO) {
+            database.categoryDao().getAllCategoriesOneTime(userId)
+        }
 
-        // Create array of category names
-        val categoryNames = categories.map { it.name }.toTypedArray()
+        // Extract category names
+        val categoryNames = categories.map { it.name }
 
-        // Create adapter for spinner
+        // Create and set adapter
         val adapter = ArrayAdapter(
             context,
             android.R.layout.simple_spinner_item,
             categoryNames
+        ).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+
+        spinner.adapter = adapter
+
+        // Set selected category if provided
+        if (selectedCategory != null) {
+            val position = categoryNames.indexOf(selectedCategory)
+            if (position != -1) {
+                spinner.setSelection(position)
+            }
+        }
+    }
+
+    /**
+     * Initialize default categories for a new user
+     */
+    suspend fun initializeDefaultCategories(context: Context, userId: String) {
+        val database = TransactionDatabase.getDatabase(context)
+        val categoryDao = database.categoryDao()
+
+        // Check if user already has categories
+        val existingCategories = withContext(Dispatchers.IO) {
+            categoryDao.getAllCategoriesOneTime(userId)
+        }
+
+        // If user already has categories, don't add default ones
+        if (existingCategories.isNotEmpty()) {
+            return
+        }
+
+        // Get default categories from resources
+        val defaultCategories = context.resources.getStringArray(
+            com.example.financetracker.R.array.default_categories
         )
 
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        // Create category objects
+        val categoryEntities = defaultCategories.map { categoryName ->
+            Category(
+                name = categoryName,
+                userId = userId
+            )
+        }
 
-        // Set adapter to spinner on the main thread
-        withContext(Dispatchers.Main) {
-            spinner.adapter = adapter
-
-            // Set default selection if category was provided
-            if (!selectedCategory.isNullOrEmpty()) {
-                val position = categoryNames.indexOf(selectedCategory)
-                if (position >= 0) {
-                    spinner.setSelection(position)
-                }
-            }
+        // Insert all categories
+        withContext(Dispatchers.IO) {
+            categoryDao.insertCategories(categoryEntities)
         }
     }
 }

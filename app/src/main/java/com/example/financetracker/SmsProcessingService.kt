@@ -20,9 +20,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.Date
 
-class SmsProcessingService : Service() {
+class SMSProcessingService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO)
     private lateinit var messageExtractor: MessageExtractor
     private lateinit var database: TransactionDatabase
@@ -116,11 +115,12 @@ class SmsProcessingService : Service() {
                     category = transactionDetails.category ?: "Uncategorized",
                     merchant = transactionDetails.merchant ?: "Unknown",
                     description = transactionDetails.description ?: "",
-                    userId = userId
+                    userId = userId,
+                    isCredit = transactionDetails.isCredit
                 )
 
                 // Check if we need more details from the user
-                if (transactionDetails.needsUserInput) {
+                if (transactionDetails.requiresUserReview) {  // Changed from needsUserInput to requiresUserReview
                     // Show notification for user to classify transaction
                     showTransactionNotification(transaction, messageBody)
                 } else {
@@ -147,6 +147,7 @@ class SmsProcessingService : Service() {
             putExtra("TRANSACTION_DATE", transaction.date)
             putExtra("TRANSACTION_MERCHANT", transaction.merchant)
             putExtra("TRANSACTION_DESCRIPTION", transaction.description)
+            putExtra("TRANSACTION_IS_CREDIT", transaction.isCredit)
         }
 
         val pendingIntent = PendingIntent.getActivity(
@@ -154,10 +155,22 @@ class SmsProcessingService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // Create notification channel if running on Android O or later
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                MainActivity.DETAILS_REQUIRED_CHANNEL_ID,
+                "Transaction Details Required",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifications for transactions that need user input"
+            }
+            notificationManager.createNotificationChannel(channel)
+        }
+
         // Create the notification
         val notification = NotificationCompat.Builder(this, MainActivity.DETAILS_REQUIRED_CHANNEL_ID)
             .setContentTitle("New Transaction Detected")
-            .setContentText("Tap to review and categorize: ${transaction.amount} at ${transaction.merchant}")
+            .setContentText("Tap to review and categorize: ₹${String.format("%.2f", transaction.amount)} at ${transaction.merchant}")
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -177,9 +190,9 @@ class SmsProcessingService : Service() {
             allTransactions.any { existingTx ->
                 val sameAmount = existingTx.amount == transaction.amount
                 val closeTime = Math.abs(existingTx.date - transaction.date) < 3600000 // Within 1 hour
-                val sameName = existingTx.name.equals(transaction.name, ignoreCase = true)
+                val sameMerchant = existingTx.merchant.equals(transaction.merchant, ignoreCase = true)
 
-                sameAmount && closeTime && sameName
+                sameAmount && closeTime && sameMerchant
             }
         }
 
@@ -192,14 +205,14 @@ class SmsProcessingService : Service() {
             Log.d(TAG, "Transaction saved to local database with ID: $id")
 
             // Sync to Firestore if user is authenticated
-            if (auth.currentUser != null) {
+            auth.currentUser?.let {
                 syncTransactionToFirestore(transaction.copy(id = id.toInt()))
             }
 
             // Show notification about the transaction
             showTransactionAddedNotification(transaction)
         } else {
-            Log.d(TAG, "Skipping duplicate transaction: ${transaction.amount} at ${transaction.merchant}")
+            Log.e(TAG, "Skipping duplicate transaction: ${transaction.amount} at ${transaction.merchant}")
         }
     }
 
@@ -214,20 +227,21 @@ class SmsProcessingService : Service() {
         // Get the document ID
         val docId = docRef.id
 
-        // Set the document ID in the transaction
-        transaction.documentId = docId
+        // Update the documentId in the transaction
+        val updatedTransaction = transaction.copy(documentId = docId)
 
         // Create a map with all transaction data
         val transactionMap = hashMapOf(
-            "id" to transaction.id,
-            "name" to transaction.name,
-            "amount" to transaction.amount,
-            "date" to transaction.date,
-            "category" to transaction.category,
-            "merchant" to transaction.merchant,
-            "description" to transaction.description,
+            "id" to updatedTransaction.id,
+            "name" to updatedTransaction.name,
+            "amount" to updatedTransaction.amount,
+            "date" to updatedTransaction.date,
+            "category" to updatedTransaction.category,
+            "merchant" to updatedTransaction.merchant,
+            "description" to updatedTransaction.description,
             "documentId" to docId,
-            "userId" to userId
+            "userId" to userId,
+            "isCredit" to updatedTransaction.isCredit
         )
 
         // Save to Firestore
@@ -237,7 +251,7 @@ class SmsProcessingService : Service() {
 
                 // Update local database with document ID
                 serviceScope.launch {
-                    database.transactionDao().updateTransaction(transaction)
+                    database.transactionDao().updateTransaction(updatedTransaction)
                 }
             }
             .addOnFailureListener { e ->
@@ -255,13 +269,26 @@ class SmsProcessingService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // Create notification channel if running on Android O or later
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                MainActivity.TRANSACTION_CHANNEL_ID,
+                "Transaction Notifications",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Notifications for new transactions"
+            }
+            notificationManager.createNotificationChannel(channel)
+        }
+
         // Format amount with currency
         val formattedAmount = String.format("%.2f", transaction.amount)
+        val transactionType = if (transaction.isCredit) "received" else "spent"
 
         // Create the notification
         val notification = NotificationCompat.Builder(this, MainActivity.TRANSACTION_CHANNEL_ID)
             .setContentTitle("Transaction Recorded")
-            .setContentText("${transaction.name}: ₹$formattedAmount")
+            .setContentText("${if (transaction.isCredit) "+" else "-"}₹$formattedAmount ${transaction.merchant}")
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
@@ -272,5 +299,5 @@ class SmsProcessingService : Service() {
         notificationManager.notify(transaction.hashCode(), notification)
     }
 
-    override fun onBind(p0: Intent?): IBinder? = null
+    override fun onBind(intent: Intent?): IBinder? = null
 }

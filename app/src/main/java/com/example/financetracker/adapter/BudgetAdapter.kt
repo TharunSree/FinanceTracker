@@ -1,5 +1,6 @@
 package com.example.financetracker.adapter
 
+import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -12,24 +13,22 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.financetracker.R
 import com.example.financetracker.database.entity.Budget
 import com.example.financetracker.viewmodel.BudgetViewModel
+import java.text.NumberFormat
+import java.util.Locale
 
 class BudgetAdapter(
     private val onEdit: (Budget) -> Unit,
     private val onDelete: (Budget) -> Unit
-) : ListAdapter<Budget, BudgetAdapter.BudgetViewHolder>(DIFF_CALLBACK) {
+) : ListAdapter<Budget, BudgetAdapter.BudgetViewHolder>(BudgetDiffCallback()) {
 
     private var budgetVsActualMap: Map<String, BudgetViewModel.BudgetVsActual> = emptyMap()
+    private val currencyFormatter = NumberFormat.getCurrencyInstance(Locale.getDefault()).apply {
+        currency = java.util.Currency.getInstance("INR")
+    }
 
-    companion object {
-        private val DIFF_CALLBACK = object : DiffUtil.ItemCallback<Budget>() {
-            override fun areItemsTheSame(oldItem: Budget, newItem: Budget): Boolean {
-                return oldItem.id == newItem.id
-            }
-
-            override fun areContentsTheSame(oldItem: Budget, newItem: Budget): Boolean {
-                return oldItem == newItem
-            }
-        }
+    fun setBudgetVsActualData(data: Map<String, BudgetViewModel.BudgetVsActual>) {
+        budgetVsActualMap = data
+        notifyDataSetChanged()
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): BudgetViewHolder {
@@ -40,16 +39,10 @@ class BudgetAdapter(
 
     override fun onBindViewHolder(holder: BudgetViewHolder, position: Int) {
         val budget = getItem(position)
-        val budgetVsActual = budgetVsActualMap[budget.category]
-        holder.bind(budget, budgetVsActual, onEdit, onDelete)
+        holder.bind(budget, budgetVsActualMap[budget.category])
     }
 
-    fun setBudgetVsActualData(data: Map<String, BudgetViewModel.BudgetVsActual>) {
-        budgetVsActualMap = data
-        notifyDataSetChanged()
-    }
-
-    class BudgetViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+    inner class BudgetViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val categoryTextView: TextView = itemView.findViewById(R.id.categoryTextView)
         private val amountTextView: TextView = itemView.findViewById(R.id.amountTextView)
         private val spentTextView: TextView = itemView.findViewById(R.id.spentTextView)
@@ -58,52 +51,50 @@ class BudgetAdapter(
         private val editButton: ImageButton = itemView.findViewById(R.id.editBudgetButton)
         private val deleteButton: ImageButton = itemView.findViewById(R.id.deleteBudgetButton)
 
-        fun bind(
-            budget: Budget,
-            budgetVsActual: BudgetViewModel.BudgetVsActual?,
-            onEdit: (Budget) -> Unit,
-            onDelete: (Budget) -> Unit
-        ) {
-            // Set basic budget info
+        fun bind(budget: Budget, budgetVsActual: BudgetViewModel.BudgetVsActual?) {
             categoryTextView.text = budget.category
-            amountTextView.text = "₹${String.format("%.2f", budget.amount)}"
+            amountTextView.text = currencyFormatter.format(budget.amount)
 
-            // Set budget vs. actual info
-            if (budgetVsActual != null) {
-                spentTextView.text = "Spent: ₹${String.format("%.2f", budgetVsActual.spentAmount)}"
+            val spent = budgetVsActual?.spentAmount ?: 0.0
+            val percentUsed = budgetVsActual?.percentUsed ?: 0.0
 
-                // Keep progress between 0 and 100%
-                val progress = when {
-                    budgetVsActual.percentUsed < 0 -> 0
-                    budgetVsActual.percentUsed > 100 -> 100
-                    else -> budgetVsActual.percentUsed.toInt()
+            spentTextView.text = "Spent: ${currencyFormatter.format(spent)}"
+
+            // Set progress and color based on percentage used
+            val progress = percentUsed.toInt().coerceIn(0, 100)
+            progressBar.progress = progress
+            progressTextView.text = "${progress}%"
+
+            // Change progress bar color based on usage
+            val context = itemView.context
+            when {
+                percentUsed > 90 -> {
+                    progressBar.progressDrawable = context.getDrawable(R.drawable.progress_bar_red)
+                    progressTextView.setTextColor(Color.RED)
                 }
-
-                progressBar.progress = progress
-                progressTextView.text = "${progress}%"
-
-                // Highlight if over budget
-                if (budgetVsActual.percentUsed > 100) {
-                    progressBar.progressDrawable = itemView.context.getDrawable(R.drawable.progress_bar_red)
-                    progressTextView.setTextColor(itemView.context.getColor(R.color.red))
-                } else if (budgetVsActual.percentUsed > 80) {
-                    progressBar.progressDrawable = itemView.context.getDrawable(R.drawable.progress_bar_orange)
-                    progressTextView.setTextColor(itemView.context.getColor(R.color.orange))
-                } else {
-                    progressBar.progressDrawable = itemView.context.getDrawable(R.drawable.progress_bar_green)
-                    progressTextView.setTextColor(itemView.context.getColor(R.color.green))
+                percentUsed > 75 -> {
+                    progressBar.progressDrawable = context.getDrawable(R.drawable.progress_bar_orange)
+                    progressTextView.setTextColor(Color.parseColor("#FF9800")) // Orange
                 }
-            } else {
-                spentTextView.text = "Spent: ₹0.00"
-                progressBar.progress = 0
-                progressTextView.text = "0%"
-                progressBar.progressDrawable = itemView.context.getDrawable(R.drawable.progress_bar_green)
-                progressTextView.setTextColor(itemView.context.getColor(R.color.green))
+                else -> {
+                    progressBar.progressDrawable = context.getDrawable(R.drawable.progress_bar_green)
+                    progressTextView.setTextColor(Color.parseColor("#4CAF50")) // Green
+                }
             }
 
-            // Set click listeners
+            // Set click listeners for edit and delete
             editButton.setOnClickListener { onEdit(budget) }
             deleteButton.setOnClickListener { onDelete(budget) }
+        }
+    }
+
+    class BudgetDiffCallback : DiffUtil.ItemCallback<Budget>() {
+        override fun areItemsTheSame(oldItem: Budget, newItem: Budget): Boolean {
+            return oldItem.id == newItem.id
+        }
+
+        override fun areContentsTheSame(oldItem: Budget, newItem: Budget): Boolean {
+            return oldItem == newItem
         }
     }
 }

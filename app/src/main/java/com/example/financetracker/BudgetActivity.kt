@@ -5,6 +5,7 @@ import android.view.View
 import android.widget.Button
 import android.widget.Toast
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -26,6 +27,7 @@ class BudgetActivity : BaseActivity() {
     private lateinit var budgetAdapter: BudgetAdapter
     private lateinit var generateButton: Button
     private lateinit var addBudgetFab: FloatingActionButton
+    private val auth = FirebaseAuth.getInstance()
 
     private val viewModel: BudgetViewModel by viewModels {
         BudgetViewModel.Factory(
@@ -101,7 +103,7 @@ class BudgetActivity : BaseActivity() {
         }
 
         // Show dialog
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        AlertDialog.Builder(this)
             .setTitle("Add Budget")
             .setView(dialogView)
             .setPositiveButton("Save") { _, _ ->
@@ -152,7 +154,7 @@ class BudgetActivity : BaseActivity() {
         }
 
         // Show dialog
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        AlertDialog.Builder(this)
             .setTitle("Edit Budget")
             .setView(dialogView)
             .setPositiveButton("Save") { _, _ ->
@@ -201,7 +203,7 @@ class BudgetActivity : BaseActivity() {
     }
 
     private fun deleteBudget(budget: Budget) {
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        AlertDialog.Builder(this)
             .setTitle("Delete Budget")
             .setMessage("Are you sure you want to delete this budget?")
             .setPositiveButton("Delete") { _, _ ->
@@ -213,7 +215,7 @@ class BudgetActivity : BaseActivity() {
     }
 
     private fun generateAutoBudgets() {
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        AlertDialog.Builder(this)
             .setTitle("Generate Budgets")
             .setMessage("This will create budget suggestions based on your past 3 months of spending. Continue?")
             .setPositiveButton("Generate") { _, _ ->
