@@ -10,14 +10,20 @@ import android.widget.EditText
 import android.widget.Spinner
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.example.financetracker.database.entity.Transaction
+import com.example.financetracker.utils.CategoryUtils
+import com.example.financetracker.utils.GuestUserManager
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 
 class AddTransactionActivity : AppCompatActivity() {
     private lateinit var calendar: Calendar
+    private lateinit var auth: FirebaseAuth
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     private val firestore = FirebaseFirestore.getInstance()
 
@@ -32,6 +38,7 @@ class AddTransactionActivity : AppCompatActivity() {
         val merchantInput = findViewById<EditText>(R.id.transactionMerchantInput)
         val descriptionInput = findViewById<EditText>(R.id.transactionDescriptionInput)
         val saveButton = findViewById<Button>(R.id.saveTransactionButton)
+        loadCategories()
 
         // Initialize calendar
         calendar = Calendar.getInstance()
@@ -147,5 +154,25 @@ class AddTransactionActivity : AppCompatActivity() {
             .addOnFailureListener { e ->
                 Toast.makeText(this, "Error adding transaction to Firestore: ${e.message}", Toast.LENGTH_SHORT).show()
             }
+    }
+
+// Update AddTransactionActivity to use the utility
+
+    // Replace your existing category loading code with:
+    private fun loadCategories() {
+        val userId = auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(applicationContext)
+        val categorySpinner = findViewById<Spinner>(R.id.transactionCategorySpinner)
+
+        // Pre-selected category from intent (if any)
+        val selectedCategory = intent.getStringExtra("category")
+
+        lifecycleScope.launch {
+            CategoryUtils.loadCategoriesToSpinner(
+                this@AddTransactionActivity,
+                categorySpinner,
+                userId,
+                selectedCategory
+            )
+        }
     }
 }

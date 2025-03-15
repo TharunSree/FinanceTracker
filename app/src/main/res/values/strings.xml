@@ -87,4 +87,11 @@
     <!-- Settings Tab Titles -->
     <string name="tab_general">General</string>
     <string name="tab_categories">Categories</string>
+    <!-- Add this to your existing arrays.xml file -->
+    <string-array name="budget_periods">
+        <item>Monthly</item>
+        <item>Weekly</item>
+        <item>Daily</item>
+        <item>Yearly</item>
+    </string-array>
 </resources>

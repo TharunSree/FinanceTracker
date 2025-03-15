@@ -17,7 +17,10 @@
     <color name="expense_red">#FFE57373</color>
     <color name="expense_green">#FF81C784</color>
     <color name="row_highlight">#E3F2FD</color>
-
+    <!-- Add these colors to your existing colors.xml file -->
+    <color name="green">#4CAF50</color>
+    <color name="orange">#FF9800</color>
+    <color name="red">#F44336</color>
 
     <color name="colorPrimary">#2196F3</color>
     <color name="colorPrimaryDark">#1976D2</color>

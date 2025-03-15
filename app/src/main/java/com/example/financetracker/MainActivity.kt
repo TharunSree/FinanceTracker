@@ -826,6 +826,11 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             }
     }
 
+    private fun navigateToBudgetActivity() {
+        val intent = Intent(this, BudgetActivity::class.java)
+        startActivity(intent)
+    }
+
     // Override this method in MainActivity to use your existing confirmation dialog
     override fun onNavigationItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
@@ -838,10 +843,14 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                 val intent = Intent(this, TransactionActivity::class.java)
                 startActivity(intent)
             }
+            R.id.nav_budget -> {
+                navigateToBudgetActivity()
+            }
 
             R.id.nav_settings -> {
                 // Handle settings navigation if implemented
-                Toast.makeText(this, "Settings not implemented yet", Toast.LENGTH_SHORT).show()
+                val intent = Intent(this, SettingsActivity::class.java)
+                startActivity(intent)
             }
 
             R.id.nav_login_logout -> {

@@ -134,6 +134,8 @@ abstract class BaseActivity : AppCompatActivity(), NavigationView.OnNavigationIt
             }
             R.id.nav_settings -> {
                 // Handle settings navigation
+                val intent = Intent(this, SettingsActivity::class.java)
+                startActivity(intent)
             }
             R.id.nav_login_logout -> {
                 // Handle login/logout

@@ -112,4 +112,14 @@ interface TransactionDao {
     // Add this query to TransactionDao:
     @Query("SELECT * FROM transaction_table WHERE documentId = :docId AND userId = :userId LIMIT 1")
     suspend fun getTransactionByDocId(docId: String, userId: String): Transaction?
+
+    // Add this method to your TransactionDao
+    @Query("SELECT * FROM transaction_table WHERE userId = :userId ORDER BY date DESC")
+    suspend fun getAllTransactionsOneTime(userId: String): List<Transaction>
+
+    @Query("SELECT * FROM transaction_table ORDER BY date DESC")
+    suspend fun getAllTransactionsOneTime(): List<Transaction>
+
+    @Query("SELECT * FROM transaction_table WHERE date BETWEEN :startDate AND :endDate AND userId = :userId ORDER BY date DESC")
+    suspend fun getTransactionsByDateRange(startDate: Long, endDate: Long, userId: String): List<Transaction>
 }

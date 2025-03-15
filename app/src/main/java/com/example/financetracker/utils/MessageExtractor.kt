@@ -2,211 +2,202 @@ package com.example.financetracker.utils
 
 import android.content.Context
 import android.util.Log
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.mlkit.nl.entityextraction.*
+import com.example.financetracker.database.TransactionDatabase
+import com.example.financetracker.database.entity.Category
+import com.example.financetracker.database.entity.Transaction
+import com.google.ai.client.generativeai.GenerativeModel
+import com.google.ai.client.generativeai.type.BlockThreshold
+import com.google.ai.client.generativeai.type.HarmCategory
+import com.google.ai.client.generativeai.type.SafetySetting
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.text.SimpleDateFormat
-import java.util.*
-import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
+import java.util.Locale
+import java.util.regex.Pattern
 
 class MessageExtractor(private val context: Context) {
+    private val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
     private val TAG = "MessageExtractor"
 
-    private val entityExtractor = EntityExtraction.getClient(
-        EntityExtractorOptions.Builder(EntityExtractorOptions.ENGLISH).build()
+    // Regular expressions for common financial message patterns
+    private val amountPattern = Pattern.compile("(?:Rs|INR|₹)\\s*([\\d,]+\\.?\\d*)")
+    private val debitPattern = Pattern.compile("(?:debited|paid|spent|payment|purchase|txn|transaction of|debit)", Pattern.CASE_INSENSITIVE)
+    private val creditPattern = Pattern.compile("(?:credited|received|added|credit|refund)", Pattern.CASE_INSENSITIVE)
+    private val merchantPattern = Pattern.compile("(?:at|to|for)\\s+([A-Za-z0-9\\s&.\\-/]+)", Pattern.CASE_INSENSITIVE)
+    private val merchantBlacklistWords = arrayOf("info", "details", "account", "balance", "UPI", "IMPS", "ref", "a/c", "upi", "imps", "ref", "no")
+
+    data class TransactionDetails(
+        val amount: Double,
+        val isCredit: Boolean,
+        val merchant: String?,
+        val date: Long?,
+        val category: String?,
+        val description: String?,
+        val needsUserInput: Boolean = false
     )
 
-    // Initialize Gemini extractor with API key
-    private val geminiExtractor = GeminiMessageExtractor(context, ApiConfig.GEMINI_API_KEY)
+    suspend fun extractTransactionDetails(messageBody: String): TransactionDetails? {
+        // Check if the message is likely to be a financial transaction
+        if (!isFinancialMessage(messageBody)) {
+            Log.d(TAG, "Not a financial message: $messageBody")
+            return null
+        }
 
-    private val currencyPatterns = mapOf(
-        "INR" to listOf(
-            Regex("""(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)"""),
-            Regex("""(?:INR|Rs\.?)\s*([\d,]+\.?\d*)"""),
-            Regex("""debited by\s*([\d,]+\.?\d*)""", RegexOption.IGNORE_CASE),
-            Regex("""Payment of Rs\s*([\d,]+\.?\d*)""", RegexOption.IGNORE_CASE),
-            Regex("""debited for INR\s*([\d,]+\.?\d*)""", RegexOption.IGNORE_CASE)
-        ),
-        "USD" to listOf(Regex("""\$\s*([\d,]+\.?\d*)""")),
-        "EUR" to listOf(Regex("""€\s*([\d,]+\.?\d*)""")),
-        "GBP" to listOf(Regex("""£\s*([\d,]+\.?\d*)"""))
-    )
+        // Try pattern-based extraction first
+        val basicDetails = extractBasicDetails(messageBody)
 
-    private val merchantPatterns = listOf(
-        Regex("""successful at\s+([A-Za-z0-9\s\-&@._]+?)(?:\.|$)""", RegexOption.IGNORE_CASE),
-        Regex("""trf to\s+([A-Za-z0-9\s\-&@._]+?)(?:\s+Ref|$)""", RegexOption.IGNORE_CASE),
-        Regex("""(?:at|to|paid to)\s+([A-Za-z0-9\s\-&@._]+?)(?:\s+(?:on|for|via|ref)|$)""", RegexOption.IGNORE_CASE),
-        Regex("""(?:merchant|payee|receiver):\s*([A-Za-z0-9\s\-&@._]+?)(?:\s+|$)""", RegexOption.IGNORE_CASE)
-    )
+        // If patterns couldn't extract enough information, use Gemini
+        return if (basicDetails?.merchant.isNullOrBlank() || basicDetails?.category.isNullOrBlank()) {
+            enhanceWithGemini(messageBody, basicDetails)
+        } else {
+            basicDetails
+        }
+    }
 
-    private val datePatterns = listOf(
-        SimpleDateFormat("ddMMMyy", Locale.ENGLISH),
-        SimpleDateFormat("dd-MM-yyyy", Locale.ENGLISH),
-        SimpleDateFormat("dd/MM/yyyy", Locale.ENGLISH),
-        SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH)
-    )
+    private fun isFinancialMessage(messageBody: String): Boolean {
+        val financialKeywords = arrayOf("account", "debit", "credit", "transaction", "balance", "payment", "spent", "received", "transfer", "Rs.", "INR", "₹")
+        val senderPatterns = arrayOf("hdfc", "icici", "sbi", "axis", "bank", "yono", "paytm", "googlepay", "upi")
 
-    // Main function that orchestrates extraction - now tries Gemini first
-    suspend fun extractTransactionDetails(message: String): TransactionDetails? {
-        Log.d(TAG, "Starting extraction for message: $message")
+        // Check if message contains financial keywords
+        val containsKeywords = financialKeywords.any { keyword ->
+            messageBody.lowercase().contains(keyword.lowercase())
+        }
+
+        // Check if the message might be from a financial institution
+        val mightBeFromBank = senderPatterns.any { pattern ->
+            messageBody.lowercase().contains(pattern.lowercase())
+        }
+
+        // Check for amount pattern
+        val containsAmount = amountPattern.matcher(messageBody).find()
+
+        return (containsKeywords || mightBeFromBank) && containsAmount
+    }
+
+    private fun extractBasicDetails(messageBody: String): TransactionDetails? {
         try {
-            // Try Gemini AI extraction first
-            val geminiResult = geminiExtractor.extractTransactionDetails(message)
-            if (geminiResult != null) {
-                Log.d(TAG, "Successfully extracted with Gemini: $geminiResult")
-                return geminiResult
-            } else {
-                Log.d(TAG, "Gemini extraction returned null, falling back to regex")
+            // Extract amount
+            val amountMatcher = amountPattern.matcher(messageBody)
+            if (!amountMatcher.find()) {
+                return null
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error with Gemini extraction, falling back to regex", e)
-        }
 
-        // Fall back to original ML Kit + regex extraction
-        return extractWithRegexAndMlKit(message)
-    }
+            val amountStr = amountMatcher.group(1).replace(",", "")
+            val amount = amountStr.toDoubleOrNull() ?: return null
 
-    // Original function renamed to extract with regex and ML Kit
-    private suspend fun extractWithRegexAndMlKit(message: String): TransactionDetails? =
-        suspendCoroutine { continuation ->
-            entityExtractor.downloadModelIfNeeded()
-                .addOnSuccessListener {
-                    entityExtractor.annotate(message)
-                        .addOnSuccessListener { entityAnnotations ->
-                            val details = processAnnotations(message, entityAnnotations)
-                            continuation.resume(details)
-                        }
-                        .addOnFailureListener {
-                            Log.e(TAG, "Entity annotation failed", it)
-                            continuation.resume(null)
-                        }
-                }
-                .addOnFailureListener {
-                    Log.e(TAG, "Model download failed", it)
-                    continuation.resume(null)
-                }
-        }
+            // Determine if credit or debit
+            val debitMatcher = debitPattern.matcher(messageBody)
+            val creditMatcher = creditPattern.matcher(messageBody)
+            val isCredit = !debitMatcher.find() && creditMatcher.find()
 
-    private suspend fun getCategoryForMerchant(merchant: String, userId: String?): String {
-        userId ?: return "Uncategorized"
-
-        return try {
-            withContext(Dispatchers.IO) {
-                val merchantDoc = FirebaseFirestore.getInstance()
-                    .collection("users")
-                    .document(userId)
-                    .collection("merchants")
-                    .document(merchant)
-                    .get()
-                    .await()
-
-                merchantDoc.getString("category") ?: "Uncategorized"
+            // Extract merchant
+            var merchant: String? = null
+            val merchantMatcher = merchantPattern.matcher(messageBody)
+            if (merchantMatcher.find()) {
+                merchant = merchantMatcher.group(1)?.trim()
+                    ?.split("\\s+".toRegex())
+                    ?.filter { word -> !merchantBlacklistWords.contains(word.lowercase()) }
+                    ?.joinToString(" ")
+                    ?.trim()
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting category for merchant", e)
-            "Uncategorized"
-        }
-    }
 
-    private fun processAnnotations(
-        message: String,
-        entityAnnotations: List<EntityAnnotation>
-    ): TransactionDetails? {
-        // The existing implementation remains unchanged
-        var amount: Double? = null
-        var currency = "INR" // Default currency
-        var merchant: String? = null
-        var date: Long? = null
-        var refNumber: String? = null
-        var description: String? = null
+            // Final cleaning of merchant name
+            merchant = merchant?.trim()?.replace(Regex("[^A-Za-z0-9\\s&.\\-/]"), "")
 
-        // Extract reference number
-        val refPattern = Regex("""(?:Ref(?:no|erence)\s*(?:Number)?:?\s*)(\d+)""", RegexOption.IGNORE_CASE)
-        refPattern.find(message)?.let {
-            refNumber = it.groupValues[1]
-        }
-
-        // Extract amount using currency patterns
-        for ((curr, patterns) in currencyPatterns) {
-            for (pattern in patterns) {
-                pattern.find(message)?.let {
-                    amount = it.groupValues[1].replace(",", "").toDoubleOrNull()
-                    currency = curr
-                    return@let
-                }
-            }
-            if (amount != null) break
-        }
-
-        // Extract date
-        // First try to find explicit date markers
-        val dateMarkerPattern = Regex("""(?:on date|dated)\s+(\d{2}[A-Za-z]{3}\d{2}|\d{2}[-/]\d{2}[-/]\d{2,4})""")
-        var dateStr = dateMarkerPattern.find(message)?.groupValues?.get(1)
-
-        // If no explicit date marker, try to find any date pattern
-        if (dateStr == null) {
-            val generalDatePattern = Regex("""(\d{2}[A-Za-z]{3}\d{2}|\d{2}[-/]\d{2}[-/]\d{2,4})""")
-            dateStr = generalDatePattern.find(message)?.groupValues?.get(1)
-        }
-
-        // Try to parse the date string
-        if (dateStr != null) {
-            for (dateFormat in datePatterns) {
-                try {
-                    date = dateFormat.parse(dateStr)?.time
-                    if (date != null) break
-                } catch (e: Exception) {
-                    continue
-                }
-            }
-        }
-
-        // Extract merchant
-        for (pattern in merchantPatterns) {
-            pattern.find(message)?.let {
-                merchant = it.groupValues[1].trim()
-                    .replace(Regex("""[@\s]+"""), " ")
-                    .trim()
-                return@let
-            }
-        }
-
-        // Special handling for Apay messages
-        if (message.contains("Apay", ignoreCase = true) && merchant == null) {
-            merchant = "Apay Transaction"
-        }
-
-        // Extract description from the message
-        if (message.contains("desc:", ignoreCase = true)) {
-            val descPattern = Regex("""desc:\s*([A-Za-z0-9\s\-&@._]+)""", RegexOption.IGNORE_CASE)
-            description = descPattern.find(message)?.groupValues?.get(1)?.trim()
-        }
-
-        // If we have at least an amount, create the transaction details
-        return if (amount != null) {
-            TransactionDetails(
-                amount = amount!!,
-                merchant = merchant ?: "Unknown Merchant",
-                date = date ?: System.currentTimeMillis(),
-                category = "Uncategorized",
-                currency = currency,
-                referenceNumber = refNumber,
-                description = description ?: ""
+            return TransactionDetails(
+                amount = amount,
+                isCredit = isCredit,
+                merchant = merchant,
+                date = System.currentTimeMillis(),
+                category = null,  // Will be enhanced with Gemini
+                description = null,  // Will be enhanced with Gemini
+                needsUserInput = merchant.isNullOrBlank()
             )
-        } else null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error extracting basic details", e)
+            return null
+        }
+    }
+
+    private suspend fun enhanceWithGemini(
+        messageBody: String,
+        basicDetails: TransactionDetails?
+    ): TransactionDetails? {
+        if (basicDetails == null) return null
+
+        try {
+            // Get available categories for the current user
+            val auth = FirebaseAuth.getInstance()
+            val userId = auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(context)
+
+            val database = TransactionDatabase.getDatabase(context)
+            val categories = withContext(Dispatchers.IO) {
+                database.categoryDao().getAllCategoriesOneTime(userId)
+            }
+
+            val categoryNames = categories.map { it.name }
+
+            // Safety settings
+            val safetySettings = listOf(
+                SafetySetting(HarmCategory.HARASSMENT, BlockThreshold.NONE),
+                SafetySetting(HarmCategory.HATE_SPEECH, BlockThreshold.NONE),
+                SafetySetting(HarmCategory.SEXUALLY_EXPLICIT, BlockThreshold.NONE),
+                SafetySetting(HarmCategory.DANGEROUS_CONTENT, BlockThreshold.NONE)
+            )
+
+            // Create the model
+            val model = GenerativeModel(
+                modelName = "gemini-pro",
+                apiKey = "YOUR_API_KEY",
+                safetySettings = safetySettings
+            )
+
+            // Create prompt with all necessary information
+            val prompt = """
+                You are a financial transaction analyzer. Analyze this bank SMS message and extract detailed information.
+                
+                SMS Message: $messageBody
+                
+                Available categories: ${categoryNames.joinToString(", ")}
+                
+                I need the following information in a JSON format:
+                1. merchant: The name of the merchant or business (extract from message if possible)
+                2. category: The most appropriate category from the available categories
+                3. description: A brief description of what this transaction might be for
+                4. isCredit: Boolean indicating if this is income (true) or expense (false)
+                
+                Return ONLY the JSON object with these fields, nothing else:
+            """.trimIndent()
+
+            // Generate content
+            val response = model.generateContent(prompt).text
+
+            // Parse JSON response
+            val jsonResponse = JSONObject(response!!.trim())
+
+            // Extract information
+            val enhancedMerchant = jsonResponse.optString("merchant")
+                ?.takeIf { it.isNotBlank() } ?: basicDetails.merchant
+            val enhancedCategory = jsonResponse.optString("category")
+                ?.takeIf { it.isNotBlank() } ?: "Uncategorized"
+            val enhancedDescription = jsonResponse.optString("description")
+                ?.takeIf { it.isNotBlank() }
+            val enhancedIsCredit = jsonResponse.optBoolean("isCredit", basicDetails.isCredit)
+
+            return basicDetails.copy(
+                merchant = enhancedMerchant,
+                category = enhancedCategory,
+                description = enhancedDescription,
+                isCredit = enhancedIsCredit,
+                needsUserInput = enhancedMerchant.isNullOrBlank() || enhancedCategory == "Uncategorized"
+            )
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error using Gemini to enhance transaction", e)
+            // Return original details if Gemini enhancement fails
+            return basicDetails
+        }
     }
 }
-
-// Keep the TransactionDetails class as is
-data class TransactionDetails(
-    val amount: Double,
-    val merchant: String,
-    val date: Long,
-    val category: String,
-    val currency: String,
-    val referenceNumber: String? = null,
-    val description: String = ""
-)

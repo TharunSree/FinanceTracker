@@ -12,183 +12,137 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.database.entity.Transaction
+import com.example.financetracker.utils.GuestUserManager
 import com.example.financetracker.utils.MessageExtractor
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Date
 
 class SmsProcessingService : Service() {
-
-    private val job = SupervisorJob()
-    private val coroutineScope = CoroutineScope(Dispatchers.IO + job)
+    private val serviceScope = CoroutineScope(Dispatchers.IO)
+    private lateinit var messageExtractor: MessageExtractor
+    private lateinit var database: TransactionDatabase
     private val firestore = FirebaseFirestore.getInstance()
+    private val auth = FirebaseAuth.getInstance()
 
     companion object {
-        private const val TAG = "SmsProcessingService"
-        private const val FOREGROUND_NOTIFICATION_ID = 1001
-        private const val SERVICE_CHANNEL_ID = "sms_processing_channel"
-        private const val TRANSACTION_CHANNEL_ID = "transaction_channel"
-        private const val DETAILS_CHANNEL_ID = "details_channel"
+        private const val TAG = "SMSProcessingService"
+        private const val NOTIFICATION_ID = 1001
+        private const val NOTIFICATION_CHANNEL_ID = "sms_processing_channel"
     }
 
     override fun onCreate() {
         super.onCreate()
+        Log.d(TAG, "SMSProcessingService created")
+        messageExtractor = MessageExtractor(this)
+        database = TransactionDatabase.getDatabase(this)
+
         createNotificationChannel()
-        startForeground()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "SMSProcessingService started")
+
+        // Start as foreground service to avoid being killed
+        startForeground(NOTIFICATION_ID, createNotification())
+
+        intent?.let {
+            val sender = it.getStringExtra("sender") ?: return@let
+            val messageBody = it.getStringExtra("message") ?: return@let
+
+            Log.d(TAG, "Processing SMS from $sender: $messageBody")
+
+            serviceScope.launch {
+                processMessage(sender, messageBody)
+                // Stop the service once processing is complete
+                stopSelf(startId)
+            }
+        }
+
+        return START_NOT_STICKY
+    }
+
+    private fun createNotification(): android.app.Notification {
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setContentTitle("Processing Financial SMS")
+            .setContentText("Looking for transaction details...")
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentIntent(pendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                SERVICE_CHANNEL_ID,
-                "SMS Processing",
+                NOTIFICATION_CHANNEL_ID,
+                "SMS Processing Channel",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Background processing of SMS messages"
+                description = "Used while processing financial SMS messages"
             }
 
-            val notificationManager =
-                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
-
-            // Also create transaction channels
-            NotificationChannel(
-                TRANSACTION_CHANNEL_ID,
-                "Transactions",
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                description = "Transaction notifications"
-                enableLights(true)
-                enableVibration(true)
-                notificationManager.createNotificationChannel(this)
-            }
-
-            NotificationChannel(
-                DETAILS_CHANNEL_ID,
-                "Details Required",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Notifications requiring user input"
-                enableLights(true)
-                enableVibration(true)
-                notificationManager.createNotificationChannel(this)
-            }
         }
     }
 
-    private fun startForeground() {
-        val notification = NotificationCompat.Builder(this, SERVICE_CHANNEL_ID)
-            .setContentTitle("Processing SMS")
-            .setContentText("Analyzing message for transaction details")
-            .setSmallIcon(R.drawable.ic_notification)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
+    private suspend fun processMessage(sender: String, messageBody: String) {
+        // Get the current userId or create a guest ID
+        val userId = auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(applicationContext)
 
-        startForeground(FOREGROUND_NOTIFICATION_ID, notification)
-    }
+        try {
+            val transactionDetails = messageExtractor.extractTransactionDetails(messageBody)
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val messageBody = intent?.getStringExtra("message")
-        val sender = intent?.getStringExtra("sender")
+            if (transactionDetails != null) {
+                Log.d(TAG, "Extracted transaction details: $transactionDetails")
 
-        Log.d(TAG, "Service started with message from $sender")
+                // Generate transaction from extracted details
+                val transaction = Transaction(
+                    id = 0,  // Room will generate this
+                    name = transactionDetails.merchant ?: "Unknown Merchant",
+                    amount = transactionDetails.amount,
+                    date = transactionDetails.date ?: System.currentTimeMillis(),
+                    category = transactionDetails.category ?: "Uncategorized",
+                    merchant = transactionDetails.merchant ?: "Unknown",
+                    description = transactionDetails.description ?: "",
+                    userId = userId
+                )
 
-        if (messageBody != null) {
-            processMessage(messageBody, startId)
-        } else {
-            Log.e(TAG, "No message body provided in intent")
-            stopSelf(startId)
-        }
-
-        // If service gets killed, restart it
-        return START_REDELIVER_INTENT
-    }
-
-    private fun processMessage(messageBody: String, startId: Int) {
-        coroutineScope.launch {
-            try {
-                Log.d(TAG, "Starting message processing with extractor")
-                val messageExtractor = MessageExtractor(this@SmsProcessingService)
-                val details = messageExtractor.extractTransactionDetails(messageBody)
-
-                // Update notification to show progress
-                updateProcessingNotification("Extracting transaction details...")
-
-                if (details != null) {
-                    Log.d(TAG, "Extracted details: $details")
-
-                    val transaction = Transaction(
-                        id = 0,
-                        name = details.merchant.ifBlank { "Unknown Merchant" },
-                        amount = details.amount,
-                        date = details.date,
-                        category = if (details.category == "Uncategorized") "" else details.category,
-                        merchant = details.merchant,
-                        description = details.description
-                    )
-
-                    // Update notification
-                    updateProcessingNotification("Saving transaction...")
-
-                    // Save to Room database
-                    val database = TransactionDatabase.getDatabase(this@SmsProcessingService)
-                    database.transactionDao().insertTransaction(transaction)
-                    Log.d(TAG, "Transaction successfully added to the Room database")
-
-                    // Save to Firestore
-                    addTransactionToFirestore(transaction)
-
-                    // Show appropriate notification
-                    if (transaction.name == "Unknown Merchant" || transaction.category.isBlank()) {
-                        showDetailsNeededNotification(transaction, messageBody)
-                    } else {
-                        showTransactionNotification(transaction)
-                    }
+                // Check if we need more details from the user
+                if (transactionDetails.needsUserInput) {
+                    // Show notification for user to classify transaction
+                    showTransactionNotification(transaction, messageBody)
                 } else {
-                    Log.e(TAG, "Could not extract transaction details from message: $messageBody")
-                    showFailureNotification(messageBody)
+                    // Save the transaction directly
+                    saveTransaction(transaction)
                 }
-
-                // Stop the service
-                stopSelf(startId)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error processing message", e)
-                e.printStackTrace()
-                showFailureNotification(messageBody)
-                stopSelf(startId)
+            } else {
+                Log.d(TAG, "No transaction details found in the message")
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error processing message", e)
         }
     }
 
-    private fun updateProcessingNotification(statusText: String) {
-        val notification = NotificationCompat.Builder(this, SERVICE_CHANNEL_ID)
-            .setContentTitle("Processing SMS")
-            .setContentText(statusText)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
+    private fun showTransactionNotification(transaction: Transaction, messageBody: String) {
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        val notificationManager =
-            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        notificationManager.notify(FOREGROUND_NOTIFICATION_ID, notification)
-    }
-
-    private fun addTransactionToFirestore(transaction: Transaction) {
-        firestore.collection("transactions")
-            .add(transaction)
-            .addOnSuccessListener {
-                Log.d(TAG, "Transaction successfully added to Firestore")
-            }
-            .addOnFailureListener { e ->
-                Log.e(TAG, "Error adding transaction to Firestore: ${e.message}")
-            }
-    }
-
-    private fun showDetailsNeededNotification(transaction: Transaction, message: String) {
+        // Create a pending intent to open MainActivity with the transaction details
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("SHOW_TRANSACTION_DIALOG", true)
-            putExtra("TRANSACTION_MESSAGE", message)
+            putExtra("TRANSACTION_MESSAGE", messageBody)
             putExtra("TRANSACTION_AMOUNT", transaction.amount)
             putExtra("TRANSACTION_DATE", transaction.date)
             putExtra("TRANSACTION_MERCHANT", transaction.merchant)
@@ -196,73 +150,127 @@ class SmsProcessingService : Service() {
         }
 
         val pendingIntent = PendingIntent.getActivity(
-            this,
-            System.currentTimeMillis().toInt(),
-            intent,
+            this, 0, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(this, DETAILS_CHANNEL_ID)
+        // Create the notification
+        val notification = NotificationCompat.Builder(this, MainActivity.DETAILS_REQUIRED_CHANNEL_ID)
+            .setContentTitle("New Transaction Detected")
+            .setContentText("Tap to review and categorize: ${transaction.amount} at ${transaction.merchant}")
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Transaction Details Needed")
-            .setContentText("₹${transaction.amount} - Tap to add details")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_REMINDER)
-            .setAutoCancel(true)
             .setContentIntent(pendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
             .build()
 
-        val notificationManager =
-            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        notificationManager.notify(
-            System.currentTimeMillis().toInt(),
-            notification
-        )
+        // Show the notification
+        notificationManager.notify(transaction.hashCode(), notification)
     }
 
-    private fun showTransactionNotification(transaction: Transaction) {
-        val notification = NotificationCompat.Builder(this, TRANSACTION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
+    private suspend fun saveTransaction(transaction: Transaction) {
+        // First check if this transaction might be a duplicate
+        val isDuplicate = withContext(Dispatchers.IO) {
+            val allTransactions = database.transactionDao().getAllTransactionsOneTime()
+
+            // Check for similar transactions in the last hour
+            allTransactions.any { existingTx ->
+                val sameAmount = existingTx.amount == transaction.amount
+                val closeTime = Math.abs(existingTx.date - transaction.date) < 3600000 // Within 1 hour
+                val sameName = existingTx.name.equals(transaction.name, ignoreCase = true)
+
+                sameAmount && closeTime && sameName
+            }
+        }
+
+        if (!isDuplicate) {
+            // Insert into Room database
+            val id = withContext(Dispatchers.IO) {
+                database.transactionDao().insertTransaction(transaction)
+            }
+
+            Log.d(TAG, "Transaction saved to local database with ID: $id")
+
+            // Sync to Firestore if user is authenticated
+            if (auth.currentUser != null) {
+                syncTransactionToFirestore(transaction.copy(id = id.toInt()))
+            }
+
+            // Show notification about the transaction
+            showTransactionAddedNotification(transaction)
+        } else {
+            Log.d(TAG, "Skipping duplicate transaction: ${transaction.amount} at ${transaction.merchant}")
+        }
+    }
+
+    private fun syncTransactionToFirestore(transaction: Transaction) {
+        // Create a document reference first to get an ID
+        val userId = transaction.userId ?: return
+        val docRef = firestore.collection("users")
+            .document(userId)
+            .collection("transactions")
+            .document()
+
+        // Get the document ID
+        val docId = docRef.id
+
+        // Set the document ID in the transaction
+        transaction.documentId = docId
+
+        // Create a map with all transaction data
+        val transactionMap = hashMapOf(
+            "id" to transaction.id,
+            "name" to transaction.name,
+            "amount" to transaction.amount,
+            "date" to transaction.date,
+            "category" to transaction.category,
+            "merchant" to transaction.merchant,
+            "description" to transaction.description,
+            "documentId" to docId,
+            "userId" to userId
+        )
+
+        // Save to Firestore
+        docRef.set(transactionMap)
+            .addOnSuccessListener {
+                Log.d(TAG, "Transaction added to Firestore with ID: $docId")
+
+                // Update local database with document ID
+                serviceScope.launch {
+                    database.transactionDao().updateTransaction(transaction)
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Error adding transaction to Firestore", e)
+            }
+    }
+
+    private fun showTransactionAddedNotification(transaction: Transaction) {
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        // Create intent to open MainActivity
+        val intent = Intent(this, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Format amount with currency
+        val formattedAmount = String.format("%.2f", transaction.amount)
+
+        // Create the notification
+        val notification = NotificationCompat.Builder(this, MainActivity.TRANSACTION_CHANNEL_ID)
             .setContentTitle("Transaction Recorded")
-            .setContentText("${transaction.name}: ₹${transaction.amount}")
+            .setContentText("${transaction.name}: ₹$formattedAmount")
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .build()
 
-        val notificationManager =
-            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        notificationManager.notify(
-            System.currentTimeMillis().toInt(),
-            notification
-        )
+        // Show the notification with a unique ID based on the transaction details
+        notificationManager.notify(transaction.hashCode(), notification)
     }
 
-    private fun showFailureNotification(message: String) {
-        val notification = NotificationCompat.Builder(this, DETAILS_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Transaction Processing Failed")
-            .setContentText("Unable to process transaction automatically")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .build()
-
-        val notificationManager =
-            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        notificationManager.notify(
-            System.currentTimeMillis().toInt(),
-            notification
-        )
-    }
-
-    override fun onBind(intent: Intent?): IBinder? {
-        return null
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        job.cancel()
-    }
+    override fun onBind(p0: Intent?): IBinder? = null
 }

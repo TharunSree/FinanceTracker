@@ -6,12 +6,14 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.example.financetracker.database.dao.BudgetDao
 import com.example.financetracker.database.dao.CategoryDao
+import com.example.financetracker.database.dao.GoalDao
 import com.example.financetracker.database.dao.MerchantDao
 import com.example.financetracker.database.dao.TransactionDao
 import com.example.financetracker.database.entity.Budget
 import com.example.financetracker.database.entity.Merchant
 import com.example.financetracker.database.entity.Transaction
 import com.example.financetracker.database.entity.Category
+import com.example.financetracker.database.entity.Goal
 
 
 @Database(
@@ -19,9 +21,10 @@ import com.example.financetracker.database.entity.Category
         Transaction::class,
         Merchant::class,
         Category::class,
-        Budget::class
+        Budget::class,
+        Goal::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class TransactionDatabase : RoomDatabase() {
@@ -29,6 +32,7 @@ abstract class TransactionDatabase : RoomDatabase() {
     abstract fun merchantDao(): MerchantDao
     abstract fun categoryDao(): CategoryDao
     abstract fun budgetDao(): BudgetDao
+    abstract fun goalDao(): GoalDao
 
     companion object {
         @Volatile

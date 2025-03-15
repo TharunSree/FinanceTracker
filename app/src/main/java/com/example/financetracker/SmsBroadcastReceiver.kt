@@ -34,6 +34,9 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
         // Add a static property to track receiver initialization
         var isInitialized = false
     }
+    init {
+        isInitialized = true
+    }
 
     override fun onReceive(context: Context?, intent: Intent?) {
         if (context == null || intent == null) {
