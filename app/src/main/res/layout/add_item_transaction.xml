@@ -45,6 +45,14 @@
         android:layout_height="48dp"
         android:hint="Description" />
 
+    <com.google.android.material.switchmaterial.SwitchMaterial
+        android:id="@+id/isCreditSwitch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Is Credit/Income"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp" />
+
     <Button
         android:id="@+id/saveTransactionButton"
         android:layout_width="match_parent"

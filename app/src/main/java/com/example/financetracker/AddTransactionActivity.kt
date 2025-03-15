@@ -11,9 +11,11 @@ import android.widget.Spinner
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.database.entity.Transaction
 import com.example.financetracker.utils.CategoryUtils
 import com.example.financetracker.utils.GuestUserManager
+import com.example.financetracker.viewmodel.TransactionViewModel
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
@@ -24,12 +26,22 @@ import java.util.Locale
 class AddTransactionActivity : AppCompatActivity() {
     private lateinit var calendar: Calendar
     private lateinit var auth: FirebaseAuth
+    private lateinit var viewModel: TransactionViewModel // Add this
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     private val firestore = FirebaseFirestore.getInstance()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.add_item_transaction)
+
+        // Initialize Firebase Auth
+        auth = FirebaseAuth.getInstance()
+
+        // Initialize ViewModel
+        viewModel = TransactionViewModel(
+            TransactionDatabase.getDatabase(applicationContext),
+            application
+        )
 
         val nameInput = findViewById<EditText>(R.id.transactionNameInput)
         val amountInput = findViewById<EditText>(R.id.transactionAmountInput)
@@ -119,13 +131,16 @@ class AddTransactionActivity : AppCompatActivity() {
             }
 
             val transaction = Transaction(
-                id = transactionId,
+                id = 0L, // Use 0L for new transactions
                 name = nameInput.text.toString(),
                 amount = amount,
                 date = calendar.timeInMillis,
                 category = categorySpinner.selectedItem.toString(),
                 merchant = merchantInput.text.toString(),
-                description = descriptionInput.text.toString()
+                description = descriptionInput.text.toString(),
+                isCredit = false, // Add this field
+                documentId = "", // Add this field
+                userId = auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(applicationContext)
             )
 
             // Save transaction to Firestore
@@ -146,13 +161,60 @@ class AddTransactionActivity : AppCompatActivity() {
     }
 
     private fun addTransactionToFirestore(transaction: Transaction) {
-        firestore.collection("transactions")
-            .add(transaction)
+        val userId = auth.currentUser?.uid ?: return
+
+        // Create a document reference first to get an ID
+        val docRef = firestore.collection("users")
+            .document(userId)
+            .collection("transactions")
+            .document()
+
+        // Get the document ID
+        val docId = docRef.id
+
+        // Create updated transaction with document ID
+        val updatedTransaction = transaction.copy(documentId = docId)
+
+        // Create a map with all transaction data
+        val transactionMap = hashMapOf(
+            "id" to updatedTransaction.id,
+            "name" to updatedTransaction.name,
+            "amount" to updatedTransaction.amount,
+            "date" to updatedTransaction.date,
+            "category" to updatedTransaction.category,
+            "merchant" to updatedTransaction.merchant,
+            "description" to updatedTransaction.description,
+            "isCredit" to updatedTransaction.isCredit,
+            "documentId" to docId,
+            "userId" to userId
+        )
+
+        // Save to Firestore
+        docRef.set(transactionMap)
             .addOnSuccessListener {
-                Toast.makeText(this, "Transaction added to Firestore", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Transaction added successfully", Toast.LENGTH_SHORT).show()
+
+                // Update the result intent with the document ID
+                val data = Intent().apply {
+                    putExtra("id", updatedTransaction.id)
+                    putExtra("name", updatedTransaction.name)
+                    putExtra("amount", updatedTransaction.amount)
+                    putExtra("date", updatedTransaction.date)
+                    putExtra("category", updatedTransaction.category)
+                    putExtra("merchant", updatedTransaction.merchant)
+                    putExtra("description", updatedTransaction.description)
+                    putExtra("documentId", updatedTransaction.documentId)
+                    putExtra("isCredit", updatedTransaction.isCredit)
+                }
+                setResult(Activity.RESULT_OK, data)
+                finish()
             }
             .addOnFailureListener { e ->
-                Toast.makeText(this, "Error adding transaction to Firestore: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this,
+                    "Error adding transaction: ${e.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
     }
 
@@ -164,7 +226,7 @@ class AddTransactionActivity : AppCompatActivity() {
         val categorySpinner = findViewById<Spinner>(R.id.transactionCategorySpinner)
 
         // Pre-selected category from intent (if any)
-        val selectedCategory = intent.getStringExtra("category")
+        val selectedCategory = intent.getStringExtra("TRANSACTION_CATEGORY")
 
         lifecycleScope.launch {
             CategoryUtils.loadCategoriesToSpinner(
