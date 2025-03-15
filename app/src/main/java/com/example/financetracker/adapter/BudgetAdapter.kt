@@ -28,7 +28,7 @@ class BudgetAdapter(
 
     fun setBudgetVsActualData(data: Map<String, BudgetViewModel.BudgetVsActual>) {
         budgetVsActualMap = data
-        notifyDataSetChanged()
+        notifyDataSetChanged() // Consider using more specific notification methods in production
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): BudgetViewHolder {
@@ -56,7 +56,11 @@ class BudgetAdapter(
             amountTextView.text = currencyFormatter.format(budget.amount)
 
             val spent = budgetVsActual?.spentAmount ?: 0.0
-            val percentUsed = budgetVsActual?.percentUsed ?: 0.0
+            val percentUsed = if (budget.amount > 0) {
+                ((spent / budget.amount) * 100).coerceIn(0.0, 100.0)
+            } else {
+                0.0
+            }
 
             spentTextView.text = "Spent: ${currencyFormatter.format(spent)}"
 
@@ -69,15 +73,21 @@ class BudgetAdapter(
             val context = itemView.context
             when {
                 percentUsed > 90 -> {
-                    progressBar.progressDrawable = context.getDrawable(R.drawable.progress_bar_red)
+                    context.getDrawable(R.drawable.progress_bar_red)?.let {
+                        progressBar.progressDrawable = it
+                    }
                     progressTextView.setTextColor(Color.RED)
                 }
                 percentUsed > 75 -> {
-                    progressBar.progressDrawable = context.getDrawable(R.drawable.progress_bar_orange)
+                    context.getDrawable(R.drawable.progress_bar_orange)?.let {
+                        progressBar.progressDrawable = it
+                    }
                     progressTextView.setTextColor(Color.parseColor("#FF9800")) // Orange
                 }
                 else -> {
-                    progressBar.progressDrawable = context.getDrawable(R.drawable.progress_bar_green)
+                    context.getDrawable(R.drawable.progress_bar_green)?.let {
+                        progressBar.progressDrawable = it
+                    }
                     progressTextView.setTextColor(Color.parseColor("#4CAF50")) // Green
                 }
             }

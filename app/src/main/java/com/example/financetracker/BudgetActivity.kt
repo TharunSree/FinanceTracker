@@ -27,7 +27,7 @@ class BudgetActivity : BaseActivity() {
     private lateinit var budgetAdapter: BudgetAdapter
     private lateinit var generateButton: Button
     private lateinit var addBudgetFab: FloatingActionButton
-    private val auth = FirebaseAuth.getInstance()
+    override var auth = FirebaseAuth.getInstance()
 
     private val viewModel: BudgetViewModel by viewModels {
         BudgetViewModel.Factory(

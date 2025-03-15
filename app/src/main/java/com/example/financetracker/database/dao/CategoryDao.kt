@@ -34,4 +34,7 @@ interface CategoryDao {
     // Add this method to CategoryDao
     @Query("SELECT * FROM category_table WHERE userId = :userId OR userId IS NULL ORDER BY name ASC")
     suspend fun getAllCategoriesOneTime(userId: String?): List<Category>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCategories(categories: List<Category>)
 }

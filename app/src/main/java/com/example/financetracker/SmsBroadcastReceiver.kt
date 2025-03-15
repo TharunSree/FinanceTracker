@@ -99,15 +99,16 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
  
                  if (details != null) {
                      Log.d(TAG, "Extracted details: $details")
- 
+
+                     // In your processMessage function, update the Transaction creation:
                      val transaction = Transaction(
-                         id = 0,
-                         name = details.merchant.ifBlank { "Unknown Merchant" },
+                         name = details.merchant ?: "Unknown Merchant",
                          amount = details.amount,
-                         date = details.date,
-                         category = if (details.category == "Uncategorized") "" else details.category,
-                         merchant = details.merchant,
-                         description = details.description
+                         date = details.date ?: System.currentTimeMillis(),
+                         category = details.category ?: "Uncategorized",
+                         merchant = details.merchant ?: "Unknown",
+                         description = details.description ?: "",
+                         isCredit = details.isCredit ?: false, // Add this line
                      )
  
                      // Save to Room database

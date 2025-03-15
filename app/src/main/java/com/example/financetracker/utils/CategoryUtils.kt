@@ -67,7 +67,7 @@ object CategoryUtils {
 
         // Get default categories from resources
         val defaultCategories = context.resources.getStringArray(
-            com.example.financetracker.R.array.default_categories
+            com.example.financetracker.R.array.transaction_categories
         )
 
         // Create category objects
