@@ -227,12 +227,38 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             }
     }
 
+    private fun debugCategories() {
+        val userId = auth.currentUser?.uid ?: "guest_user"
+        lifecycleScope.launch {
+            try {
+                val database = TransactionDatabase.getDatabase(applicationContext)
+                val categories = database.categoryDao().getAllCategories(userId).first()
+
+                Log.d("MainActivity", "=== DEBUG CATEGORIES ===")
+                Log.d("MainActivity", "Found ${categories.size} categories for user $userId")
+                categories.forEach { category ->
+                    Log.d("MainActivity", "Category: ${category.name}, isDefault: ${category.isDefault}")
+                }
+                Log.d("MainActivity", "======================")
+
+                if (categories.isEmpty()) {
+                    Toast.makeText(this@MainActivity, "No categories found, adding defaults", Toast.LENGTH_SHORT).show()
+                    CategoryUtils.initializeCategories(this@MainActivity)
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error debugging categories", e)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
         CategoryUtils.initializeCategories(this)
+
+        debugCategories()
 
         // Add this to your MainActivity's onCreate() method
         findViewById<Button>(R.id.testSmsButton).setOnClickListener {

@@ -47,7 +47,8 @@ class AddTransactionActivity : AppCompatActivity() {
         // Initialize categories when activity starts
         lifecycleScope.launch {
             try {
-                // This will ensure categories are synchronized and populated
+                Log.d(TAG, "Initializing categories")
+                // Force initialize categories to ensure we have defaults
                 CategoryUtils.initializeCategories(this@AddTransactionActivity)
 
                 // Then load categories to the spinner
@@ -55,13 +56,25 @@ class AddTransactionActivity : AppCompatActivity() {
                     this@AddTransactionActivity,
                     categorySpinner,
                     userId,
-                    null // or a default category if needed
+                    if (intent.getBooleanExtra("EDIT_MODE", false))
+                        intent.getStringExtra("TRANSACTION_CATEGORY")
+                    else null
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Error loading categories", e)
                 Toast.makeText(this@AddTransactionActivity,
                     "Error loading categories: ${e.message}",
                     Toast.LENGTH_SHORT).show()
+
+                // Fallback to simple array adapter with basic categories
+                val fallbackCategories = arrayOf("Food", "Shopping", "Others")
+                val adapter = ArrayAdapter(
+                    this@AddTransactionActivity,
+                    android.R.layout.simple_spinner_item,
+                    fallbackCategories
+                )
+                adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+                categorySpinner.adapter = adapter
             }
         }
 
@@ -82,7 +95,7 @@ class AddTransactionActivity : AppCompatActivity() {
         calendar = Calendar.getInstance()
 
         // Load categories into spinner
-        loadCategories(categorySpinner)
+
 
         // Handle edit mode
         val editMode = intent.getBooleanExtra("EDIT_MODE", false)
@@ -180,17 +193,6 @@ class AddTransactionActivity : AppCompatActivity() {
 
             setResult(Activity.RESULT_OK, resultIntent)
             finish()
-        }
-    }
-
-    private fun loadCategories(categorySpinner: Spinner) {
-        val userId = auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(applicationContext)
-        lifecycleScope.launch {
-            CategoryUtils.loadCategoriesToSpinner(
-                this@AddTransactionActivity,
-                categorySpinner,
-                userId
-            )
         }
     }
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import android.widget.ArrayAdapter
 import android.widget.Spinner
+import com.example.financetracker.R
 import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.database.entity.Category
 import com.google.firebase.auth.FirebaseAuth
@@ -17,12 +18,6 @@ import kotlinx.coroutines.withContext
 
 object CategoryUtils {
     private const val TAG = "CategoryUtils"
-
-    // Default categories that should always be available
-    private val DEFAULT_CATEGORIES = listOf(
-        "Food", "Transport", "Housing", "Entertainment",
-        "Shopping", "Healthcare", "Education", "Bills", "Others"
-    )
 
     suspend fun loadCategoriesToSpinner(
         context: Context,
@@ -80,12 +75,13 @@ object CategoryUtils {
         } catch (e: Exception) {
             Log.e(TAG, "Error loading categories to spinner", e)
 
-            // Fallback to a simple default adapter
+            // Fallback to default categories from strings.xml
             withContext(Dispatchers.Main) {
+                val categoriesArray = context.resources.getStringArray(R.array.transaction_categories)
                 val adapter = ArrayAdapter(
                     context,
                     android.R.layout.simple_spinner_item,
-                    DEFAULT_CATEGORIES
+                    categoriesArray
                 )
                 adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
                 spinner.adapter = adapter
@@ -154,8 +150,11 @@ object CategoryUtils {
             val database = TransactionDatabase.getDatabase(context)
             val firestore = FirebaseFirestore.getInstance()
 
+            // Get categories from strings.xml
+            val categoriesArray = context.resources.getStringArray(R.array.transaction_categories)
+
             withContext(Dispatchers.IO) {
-                for (name in DEFAULT_CATEGORIES) {
+                for (name in categoriesArray) {
                     val category = Category(
                         name = name,
                         userId = userId,
@@ -180,11 +179,13 @@ object CategoryUtils {
                 }
             }
 
-            Log.d(TAG, "Added ${DEFAULT_CATEGORIES.size} default categories")
+            Log.d(TAG, "Added ${categoriesArray.size} default categories")
         } catch (e: Exception) {
             Log.e(TAG, "Error adding default categories", e)
         }
     }
+
+    // Rest of the methods remain unchanged
 
     suspend fun addCategory(context: Context, category: Category) {
         val database = TransactionDatabase.getDatabase(context)
@@ -277,20 +278,104 @@ object CategoryUtils {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // First sync from Firestore
-                syncCategoriesFromFirestore(context, userId)
-
-                // Check if we have any categories now
+                // Check if we have any categories in the database
                 val database = TransactionDatabase.getDatabase(context)
-                val categories = database.categoryDao().getAllCategories(userId).first()
+                var categories = database.categoryDao().getAllCategories(userId).first()
 
-                // If still empty, add defaults
+                // If the database is empty, try syncing from Firestore first
                 if (categories.isEmpty()) {
-                    addDefaultCategories(context, userId)
+                    Log.d(TAG, "No categories in DB, syncing from Firestore")
+                    syncCategoriesFromFirestore(context, userId)
+
+                    // Check again
+                    categories = database.categoryDao().getAllCategories(userId).first()
+
+                    // If still empty after sync, force add default categories
+                    if (categories.isEmpty()) {
+                        Log.d(TAG, "No categories after Firestore sync, adding defaults")
+                        addDefaultCategoriesForced(context, userId)
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error initializing categories", e)
+
+                // Force add default categories in case of error
+                addDefaultCategoriesForced(context, userId)
             }
+        }
+    }
+
+    // This function will add default categories regardless of existing categories
+    // Use this as a fallback to ensure there are always categories available
+    private suspend fun addDefaultCategoriesForced(context: Context, userId: String) {
+        try {
+            Log.d(TAG, "Force adding default categories for userId: $userId")
+            val database = TransactionDatabase.getDatabase(context)
+
+            // Fixed list of default categories
+            val defaultCats = listOf(
+                "Food", "Shopping", "Rent", "Utilities",
+                "Transportation", "Entertainment", "Others"
+            )
+
+            withContext(Dispatchers.IO) {
+                for (name in defaultCats) {
+                    try {
+                        // Check if category already exists
+                        val existing = database.categoryDao().getCategoryByName(name, userId)
+
+                        if (existing == null) {
+                            // Only add if it doesn't exist
+                            val category = Category(
+                                name = name,
+                                userId = userId,
+                                isDefault = true
+                            )
+                            database.categoryDao().insertCategory(category)
+                            Log.d(TAG, "Added default category: $name")
+                        } else {
+                            Log.d(TAG, "Category already exists: $name")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error adding default category: $name", e)
+                    }
+                }
+            }
+
+            // If user is logged in, also save to Firestore
+            if (userId != "guest_user" && FirebaseAuth.getInstance().currentUser != null) {
+                val firestore = FirebaseFirestore.getInstance()
+
+                withContext(Dispatchers.IO) {
+                    for (name in defaultCats) {
+                        try {
+                            // Check if category exists in Firestore
+                            val snapshot = firestore.collection("users")
+                                .document(userId)
+                                .collection("categories")
+                                .whereEqualTo("name", name)
+                                .get()
+                                .await()
+
+                            // If category doesn't exist, add it
+                            if (snapshot.isEmpty) {
+                                firestore.collection("users")
+                                    .document(userId)
+                                    .collection("categories")
+                                    .add(mapOf(
+                                        "name" to name,
+                                        "isDefault" to true
+                                    ))
+                                Log.d(TAG, "Added default category to Firestore: $name")
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error adding default category to Firestore: $name", e)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error adding forced default categories", e)
         }
     }
 }
