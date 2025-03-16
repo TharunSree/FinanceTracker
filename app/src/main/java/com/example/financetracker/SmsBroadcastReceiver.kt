@@ -33,6 +33,19 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
 
         // Add a static property to track receiver initialization
         var isInitialized = false
+
+        private val currencyPatterns = mapOf(
+            "INR" to listOf(
+                Regex("""(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)"""),
+                Regex("""(?:INR|Rs\.?)\s*([\d,]+\.?\d*)"""),
+                Regex("""debited by\s*([\d,]+\.?\d*)""", RegexOption.IGNORE_CASE),
+                Regex("""Payment of Rs\s*([\d,]+\.?\d*)""", RegexOption.IGNORE_CASE),
+                Regex("""debited for INR\s*([\d,]+\.?\d*)""", RegexOption.IGNORE_CASE)
+            ),
+            "USD" to listOf(Regex("""\$\s*([\d,]+\.?\d*)""")),
+            "EUR" to listOf(Regex("""€\s*([\d,]+\.?\d*)""")),
+            "GBP" to listOf(Regex("""£\s*([\d,]+\.?\d*)"""))
+        )
     }
 
     override fun onReceive(context: Context?, intent: Intent?) {
@@ -295,29 +308,38 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
     }
 
     private fun isFinancialMessage(sender: String, message: String): Boolean {
-        // Expanded list of financial senders
+        // Add explicit debit/credit keywords
+        val debitKeywords = listOf(
+            "debited",
+            "debit",
+            "spent",
+            "paid",
+            "withdrawn",
+            "purchase",
+            "payment"
+        )
+
+        // Check if message contains amount pattern AND debit keywords
+        val hasAmount = currencyPatterns.values.flatten().any { pattern ->
+            pattern.find(message) != null
+        }
+
+        val isDebitTransaction = debitKeywords.any { keyword ->
+            message.contains(keyword, ignoreCase = true)
+        }
+
+        // Only process messages that have both amount and debit-related keywords
+        return (senderMatches(sender) || hasAmount) && isDebitTransaction
+    }
+
+    private fun senderMatches(sender: String): Boolean {
         val financialSenders = listOf(
             "SBIUPI", "SBI", "SBIPSG", "HDFCBK", "ICICI", "AXISBK", "PAYTM",
             "GPAY", "PHONEPE", "-SBIINB", "-HDFCBK", "-ICICI", "-AXISBK",
-            "CENTBK", "BOIIND", "PNBSMS", "CANBNK", "UNIONB", "8301967659",
-            "JUSPAY", "APAY", "VNPAY", "KOTAKB", "INDUSB", "YESBNK",
-            "BARODBNK", "IDFC", "IDBI", "ALLBANK", "FM-BOBSMS", "JM-BOBMBS",
-            "VM-CENTBN", "JD-INDUSB", "VM-BOBTXN"
+            "CENTBK", "BOIIND", "PNBSMS", "CANBNK", "UNIONB",
+            "KOTAKB", "INDUSB", "YESBNK"
         )
 
-        // More comprehensive detection - check sender and keywords in message
-        val financialKeywords = listOf(
-            "debited", "credited", "transaction", "txn", "a/c", "account",
-            "payment", "received", "sent", "transfer", "upi", "debit card",
-            "credit card", "balance", "spent", "paid"
-        )
-
-        val isSenderFinancial = financialSenders.any { sender.contains(it, ignoreCase = true) }
-        val containsFinancialKeywords = financialKeywords.any { message.contains(it, ignoreCase = true) }
-
-        Log.d(TAG, "Is sender financial: $isSenderFinancial, Contains financial keywords: $containsFinancialKeywords")
-
-        // Return true if either condition is met - this makes detection more robust
-        return isSenderFinancial || containsFinancialKeywords
+        return financialSenders.any { it.equals(sender, ignoreCase = true) }
     }
 }

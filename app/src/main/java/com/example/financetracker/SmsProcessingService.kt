@@ -116,6 +116,24 @@ class SmsProcessingService : Service() {
                 if (details != null) {
                     Log.d(TAG, "Extracted details: $details")
 
+                    // Check for existing transaction
+                    val database = TransactionDatabase.getDatabase(this@SmsProcessingService)
+                    val existingTransaction = database.transactionDao()
+                        .getTransactionsInTimeRange(
+                            details.date - 60000, // 1 minute before
+                            details.date + 60000  // 1 minute after
+                        )
+                        .firstOrNull { transaction ->
+                            transaction.amount == details.amount &&
+                                    transaction.name.equals(details.merchant, ignoreCase = true)
+                        }
+
+                    if (existingTransaction != null) {
+                        Log.d(TAG, "Duplicate transaction found, skipping")
+                        stopSelf(startId)
+                        return@launch
+                    }
+
                     val transaction = Transaction(
                         id = 0,
                         name = details.merchant.ifBlank { "Unknown Merchant" },
@@ -130,11 +148,10 @@ class SmsProcessingService : Service() {
                     updateProcessingNotification("Saving transaction...")
 
                     // Save to Room database
-                    val database = TransactionDatabase.getDatabase(this@SmsProcessingService)
                     database.transactionDao().insertTransaction(transaction)
                     Log.d(TAG, "Transaction successfully added to the Room database")
 
-                    // Save to Firestore
+                    // Save to Firestore if needed
                     addTransactionToFirestore(transaction)
 
                     // Show appropriate notification
@@ -143,9 +160,6 @@ class SmsProcessingService : Service() {
                     } else {
                         showTransactionNotification(transaction)
                     }
-                } else {
-                    Log.e(TAG, "Could not extract transaction details from message: $messageBody")
-                    showFailureNotification(messageBody)
                 }
 
                 // Stop the service

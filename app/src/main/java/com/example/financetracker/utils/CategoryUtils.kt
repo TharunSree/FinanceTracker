@@ -161,9 +161,13 @@ object CategoryUtils {
             val categoriesArray = context.resources.getStringArray(R.array.transaction_categories)
 
             withContext(Dispatchers.IO) {
+                // First, check for existing categories
+                val existingCategories = database.categoryDao().getAllCategories(userId).first()
+                val existingNames = existingCategories.map { it.name }.toSet()
+
                 for (name in categoriesArray) {
-                    val existingCategory = database.categoryDao().getCategoryByName(name, userId)
-                    if (existingCategory == null) {
+                    // Only add if the category doesn't already exist
+                    if (!existingNames.contains(name)) {
                         val category = Category(
                             name = name,
                             userId = userId,
@@ -174,24 +178,32 @@ object CategoryUtils {
                         // Also save to Firestore if user is logged in
                         if (userId != "guest_user" && FirebaseAuth.getInstance().currentUser != null) {
                             try {
-                                firestore.collection("users")
+                                // Check if category exists in Firestore first
+                                val query = firestore.collection("users")
                                     .document(userId)
                                     .collection("categories")
-                                    .add(mapOf(
-                                        "name" to name,
-                                        "isDefault" to true
-                                    ))
+                                    .whereEqualTo("name", name)
+                                    .get()
+                                    .await()
+
+                                if (query.isEmpty) {
+                                    firestore.collection("users")
+                                        .document(userId)
+                                        .collection("categories")
+                                        .add(mapOf(
+                                            "name" to name,
+                                            "isDefault" to true
+                                        ))
+                                }
                             } catch (e: Exception) {
                                 Log.e(TAG, "Error saving default category to Firestore: $name", e)
                             }
                         }
-                    } else {
-                        Log.d(TAG, "Category already exists: $name")
                     }
                 }
             }
 
-            Log.d(TAG, "Added ${categoriesArray.size} default categories")
+            Log.d(TAG, "Finished adding default categories")
         } catch (e: Exception) {
             Log.e(TAG, "Error adding default categories", e)
         }

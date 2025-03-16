@@ -112,4 +112,7 @@ interface TransactionDao {
     // Add this query to TransactionDao:
     @Query("SELECT * FROM transaction_table WHERE documentId = :docId AND userId = :userId LIMIT 1")
     suspend fun getTransactionByDocId(docId: String, userId: String): Transaction?
+
+    @Query("SELECT * FROM transaction_table WHERE date BETWEEN :startTime AND :endTime")
+    fun getTransactionsInTimeRange(startTime: Long, endTime: Long): List<Transaction>
 }
