@@ -26,7 +26,7 @@ import java.util.Locale
 class AddTransactionActivity : AppCompatActivity() {
     private lateinit var calendar: Calendar
     private lateinit var auth: FirebaseAuth
-    private lateinit var viewModel: TransactionViewModel // Add this
+    private lateinit var viewModel: TransactionViewModel
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     private val firestore = FirebaseFirestore.getInstance()
 
@@ -59,14 +59,14 @@ class AddTransactionActivity : AppCompatActivity() {
 
         // Handle edit mode
         val editMode = intent.getBooleanExtra("EDIT_MODE", false)
-        var transactionId = 0L
+        var transactionId = 0
 
         if (editMode) {
             // Set title for edit mode
             title = "Edit Transaction"
 
             // Get transaction details from intent
-            transactionId = intent.getLongExtra("TRANSACTION_ID", 0L)
+            transactionId = intent.getLongExtra("TRANSACTION_ID", 0L).toInt()
             nameInput.setText(intent.getStringExtra("TRANSACTION_NAME"))
             amountInput.setText(intent.getDoubleExtra("TRANSACTION_AMOUNT", 0.0).toString())
 
@@ -121,15 +121,17 @@ class AddTransactionActivity : AppCompatActivity() {
             val category = categorySpinner.selectedItem.toString()
             val merchant = merchantInput.text.toString()
             val description = descriptionInput.text.toString()
+            val userId = auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(applicationContext)
 
             val transaction = Transaction(
-                id = transactionId,
+                id = transactionId.toInt(),  // Convert Long to Int
                 name = name,
                 amount = amount,
                 date = date,
                 category = category,
                 merchant = merchant,
-                description = description
+                description = description,
+                userId = userId
             )
 
             if (editMode) {
@@ -138,7 +140,18 @@ class AddTransactionActivity : AppCompatActivity() {
                 viewModel.addTransaction(transaction)
             }
 
-            setResult(Activity.RESULT_OK)
+            // Create intent with result data
+            val resultIntent = Intent().apply {
+                putExtra("id", transaction.id)
+                putExtra("name", transaction.name)
+                putExtra("amount", transaction.amount)
+                putExtra("date", transaction.date)
+                putExtra("category", transaction.category)
+                putExtra("merchant", transaction.merchant)
+                putExtra("description", transaction.description)
+            }
+
+            setResult(Activity.RESULT_OK, resultIntent)
             finish()
         }
     }

@@ -7,18 +7,17 @@ import com.google.firebase.firestore.IgnoreExtraProperties
 @IgnoreExtraProperties
 @Entity(tableName = "transaction_table")
 data class Transaction(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    @PrimaryKey(autoGenerate = true)
+    val id: Int = 0,
     var name: String = "",
     val amount: Double = 0.0,
     val date: Long = 0L,
     var category: String = "",
     val merchant: String = "",
     val description: String = "",
-    // Add documentId field for Firestore integration
     var documentId: String = "",
-    // This field is used by both Room and Firestore
-    @field:JvmField
-    var userId: String? = null
+    // Making userId non-nullable with default empty string
+    var userId: String = ""
 ) {
     // Required no-argument constructor for Firestore
     constructor() : this(
@@ -28,6 +27,8 @@ data class Transaction(
         date = 0L,
         category = "",
         merchant = "",
-        description = ""
+        description = "",
+        documentId = "",
+        userId = ""  // Add default value here as well
     )
 }

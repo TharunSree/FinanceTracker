@@ -485,15 +485,15 @@ class TransactionViewModel(
                                     val documentId = doc.id
 
                                     val transaction = Transaction(
-                                        id = id,
+                                        id = transactionId.toInt(),
                                         name = name,
                                         amount = amount,
                                         date = date,
                                         category = category,
                                         merchant = merchant,
                                         description = description,
-                                        documentId = documentId,
-                                        userId = userId
+                                        userId = userId,
+                                        documentId = ""  // Add empty documentId for new transactions
                                     )
 
                                     transactions.add(transaction)

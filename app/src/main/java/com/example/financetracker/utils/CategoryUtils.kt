@@ -6,7 +6,7 @@ import android.widget.Spinner
 import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.database.entity.Category
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 object CategoryUtils {
@@ -19,7 +19,7 @@ object CategoryUtils {
     ) {
         val database = TransactionDatabase.getDatabase(context)
         val categories = withContext(Dispatchers.IO) {
-            database.categoryDao().getAllCategories(userId)
+            database.categoryDao().getAllCategories(userId).first() // Use .first() to collect the Flow
         }
 
         val categoryNames = categories.map { it.name }.toMutableList()
