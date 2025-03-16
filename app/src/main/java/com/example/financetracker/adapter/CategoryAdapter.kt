@@ -42,9 +42,9 @@ class CategoryAdapter(
                 onDelete(category)
             }
 
-            // Disable delete button for default categories
-            deleteButton.isEnabled = !category.isDefault
-            deleteButton.alpha = if (category.isDefault) 0.5f else 1.0f
+            // Remove the disable logic for default categories
+            deleteButton.isEnabled = true
+            deleteButton.alpha = 1.0f
         }
     }
 
