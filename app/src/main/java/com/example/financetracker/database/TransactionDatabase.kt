@@ -21,7 +21,7 @@ import com.example.financetracker.database.entity.Category
         Category::class,
         Budget::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class TransactionDatabase : RoomDatabase() {

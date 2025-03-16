@@ -7,5 +7,6 @@ import androidx.room.PrimaryKey
 data class Merchant(
     @PrimaryKey(autoGenerate = true) val id: Int,
     val name: String,
-    val category: String
+    val category: String,
+    val userId: String? = null
 )

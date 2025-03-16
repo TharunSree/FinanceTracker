@@ -485,7 +485,7 @@ class TransactionViewModel(
                                     val documentId = doc.id
 
                                     val transaction = Transaction(
-                                        id = transactionId.toInt(),
+                                        id = id,
                                         name = name,
                                         amount = amount,
                                         date = date,
