@@ -55,6 +55,13 @@ object CategoryUtils {
                         database.categoryDao().getAllCategories(userId).first()
                     }
                 }
+            } else {
+                // Ensure default categories are present
+                addDefaultCategories(context, userId)
+                // Reload categories after ensuring defaults are present
+                categories = withContext(Dispatchers.IO) {
+                    database.categoryDao().getAllCategories(userId).first()
+                }
             }
 
             val categoryNames = categories.map { it.name }.toMutableList()
@@ -155,26 +162,31 @@ object CategoryUtils {
 
             withContext(Dispatchers.IO) {
                 for (name in categoriesArray) {
-                    val category = Category(
-                        name = name,
-                        userId = userId,
-                        isDefault = true
-                    )
-                    database.categoryDao().insertCategory(category)
+                    val existingCategory = database.categoryDao().getCategoryByName(name, userId)
+                    if (existingCategory == null) {
+                        val category = Category(
+                            name = name,
+                            userId = userId,
+                            isDefault = true
+                        )
+                        database.categoryDao().insertCategory(category)
 
-                    // Also save to Firestore if user is logged in
-                    if (userId != "guest_user" && FirebaseAuth.getInstance().currentUser != null) {
-                        try {
-                            firestore.collection("users")
-                                .document(userId)
-                                .collection("categories")
-                                .add(mapOf(
-                                    "name" to name,
-                                    "isDefault" to true
-                                ))
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error saving default category to Firestore: $name", e)
+                        // Also save to Firestore if user is logged in
+                        if (userId != "guest_user" && FirebaseAuth.getInstance().currentUser != null) {
+                            try {
+                                firestore.collection("users")
+                                    .document(userId)
+                                    .collection("categories")
+                                    .add(mapOf(
+                                        "name" to name,
+                                        "isDefault" to true
+                                    ))
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error saving default category to Firestore: $name", e)
+                            }
                         }
+                    } else {
+                        Log.d(TAG, "Category already exists: $name")
                     }
                 }
             }
@@ -184,8 +196,6 @@ object CategoryUtils {
             Log.e(TAG, "Error adding default categories", e)
         }
     }
-
-    // Rest of the methods remain unchanged
 
     suspend fun addCategory(context: Context, category: Category) {
         val database = TransactionDatabase.getDatabase(context)
@@ -295,6 +305,9 @@ object CategoryUtils {
                         Log.d(TAG, "No categories after Firestore sync, adding defaults")
                         addDefaultCategoriesForced(context, userId)
                     }
+                } else {
+                    // Ensure default categories are present
+                    addDefaultCategories(context, userId)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error initializing categories", e)

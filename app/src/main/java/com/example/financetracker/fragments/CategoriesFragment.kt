@@ -110,7 +110,9 @@ class CategoriesFragment : Fragment() {
                 database.categoryDao().getAllCategories(userId)
                     .catch { e ->
                         Log.e(TAG, "Error loading categories", e)
-                        Toast.makeText(context, "Error loading categories", Toast.LENGTH_SHORT).show()
+                        context?.let {
+                            Toast.makeText(it, "Error loading categories", Toast.LENGTH_SHORT).show()
+                        }
                     }
                     .collect { categories ->
                         Log.d(TAG, "Found ${categories.size} categories")
@@ -122,7 +124,6 @@ class CategoriesFragment : Fragment() {
                         }
 
                         // If we have no categories, add default ones
-                        // If we have no categories, add default ones
                         if (categories.isEmpty()) {
                             CategoryUtils.addDefaultCategories(requireContext(), userId ?: "guest_user")
                             // After adding defaults, refresh the list
@@ -131,7 +132,9 @@ class CategoriesFragment : Fragment() {
                     }
             } catch (e: Exception) {
                 Log.e(TAG, "Error in loadCategories", e)
-                Toast.makeText(context, "Error loading categories: ${e.message}", Toast.LENGTH_SHORT).show()
+                context?.let {
+                    Toast.makeText(it, "Error loading categories: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
