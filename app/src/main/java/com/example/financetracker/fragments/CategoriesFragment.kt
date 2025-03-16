@@ -1,10 +1,12 @@
 package com.example.financetracker.fragments
 
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
@@ -15,9 +17,12 @@ import com.example.financetracker.R
 import com.example.financetracker.adapter.CategoryAdapter
 import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.database.entity.Category
+import com.example.financetracker.utils.CategoryUtils
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
 class CategoriesFragment : Fragment() {
@@ -28,6 +33,8 @@ class CategoriesFragment : Fragment() {
     private val firestore = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
     private lateinit var fab: FloatingActionButton
+    private lateinit var emptyView: TextView
+    private val TAG = "CategoriesFragment"
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -40,30 +47,91 @@ class CategoriesFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        database = TransactionDatabase.getDatabase(requireContext())
+        try {
+            Log.d(TAG, "Initializing CategoriesFragment")
+            database = TransactionDatabase.getDatabase(requireContext())
 
-        recyclerView = view.findViewById(R.id.categoriesRecyclerView)
-        recyclerView.layoutManager = LinearLayoutManager(requireContext())
+            recyclerView = view.findViewById(R.id.categoriesRecyclerView)
+            recyclerView.layoutManager = LinearLayoutManager(requireContext())
 
-        val userId = auth.currentUser?.uid
+            // Find empty view if exists
+            try {
+                emptyView = view.findViewById(R.id.emptyCategoriesText)
+            } catch (e: Exception) {
+                Log.e(TAG, "Empty view not found", e)
+            }
 
-        categoryAdapter = CategoryAdapter(
-            onEdit = { category -> showEditCategoryDialog(category) },
-            onDelete = { category -> deleteCategory(category) }
-        )
+            // Get user ID
+            val userId = auth.currentUser?.uid ?: "guest_user"
+            Log.d(TAG, "User ID: $userId")
 
-        recyclerView.adapter = categoryAdapter
+            categoryAdapter = CategoryAdapter(
+                onEdit = { category -> showEditCategoryDialog(category) },
+                onDelete = { category -> deleteCategory(category) }
+            )
 
-        // Get the fab from the activity
-        fab = requireActivity().findViewById(R.id.addCategoryFab)
+            recyclerView.adapter = categoryAdapter
 
-        fab.setOnClickListener {
-            showAddCategoryDialog()
+            // Set up FAB
+            fab = requireActivity().findViewById(R.id.addCategoryFab)
+            fab.visibility = View.VISIBLE
+            fab.setOnClickListener {
+                showAddCategoryDialog()
+            }
+
+            // First sync from Firestore
+            lifecycleScope.launch {
+                try {
+                    // Show loading
+                    Toast.makeText(context, "Loading categories...", Toast.LENGTH_SHORT).show()
+
+                    // Sync from Firestore
+                    CategoryUtils.syncCategoriesFromFirestore(requireContext(), userId)
+
+                    // Load categories from local DB
+                    loadCategories(userId)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error during initial category setup", e)
+                    Toast.makeText(context, "Error loading categories", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in onViewCreated", e)
+            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
         }
+    }
 
-        viewLifecycleOwner.lifecycleScope.launch {
-            database.categoryDao().getAllCategories(userId).collect { categories ->
-                categoryAdapter.submitList(categories)
+    private fun loadCategories(userId: String?) {
+        lifecycleScope.launch {
+            try {
+                Log.d(TAG, "Loading categories for user: $userId")
+
+                // Collect categories from flow
+                database.categoryDao().getAllCategories(userId)
+                    .catch { e ->
+                        Log.e(TAG, "Error loading categories", e)
+                        Toast.makeText(context, "Error loading categories", Toast.LENGTH_SHORT).show()
+                    }
+                    .collect { categories ->
+                        Log.d(TAG, "Found ${categories.size} categories")
+                        categoryAdapter.submitList(categories)
+
+                        // Update empty state if needed
+                        if (::emptyView.isInitialized) {
+                            emptyView.visibility = if (categories.isEmpty()) View.VISIBLE else View.GONE
+                        }
+
+                        // If we have no categories, add default ones
+                        // If we have no categories, add default ones
+                        if (categories.isEmpty()) {
+                            CategoryUtils.addDefaultCategories(requireContext(), userId ?: "guest_user")
+                            // After adding defaults, refresh the list
+                            loadCategories(userId)
+                        }
+                    }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in loadCategories", e)
+                Toast.makeText(context, "Error loading categories: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -71,6 +139,10 @@ class CategoriesFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         fab.visibility = View.VISIBLE
+
+        // Refresh categories on resume
+        val userId = auth.currentUser?.uid ?: "guest_user"
+        loadCategories(userId)
     }
 
     override fun onPause() {
@@ -114,54 +186,46 @@ class CategoriesFragment : Fragment() {
     }
 
     private fun addCategory(name: String) {
-        val userId = auth.currentUser?.uid
+        val userId = auth.currentUser?.uid ?: "guest_user"
 
-        viewLifecycleOwner.lifecycleScope.launch {
-            val category = Category(
-                name = name,
-                userId = userId,
-                isDefault = false
-            )
+        lifecycleScope.launch {
+            try {
+                val category = Category(
+                    name = name,
+                    userId = userId,
+                    isDefault = false
+                )
 
-            database.categoryDao().insertCategory(category)
+                // Use CategoryUtils to add category
+                CategoryUtils.addCategory(requireContext(), category)
 
-            // Also save to Firestore if signed in
-            userId?.let {
-                firestore.collection("users")
-                    .document(it)
-                    .collection("categories")
-                    .add(mapOf(
-                        "name" to name,
-                        "isDefault" to false
-                    ))
+                Toast.makeText(requireContext(), "Category added", Toast.LENGTH_SHORT).show()
+
+                // Refresh categories
+                loadCategories(userId)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error adding category", e)
+                Toast.makeText(requireContext(), "Error adding category: ${e.message}", Toast.LENGTH_SHORT).show()
             }
-
-            Toast.makeText(requireContext(), "Category added", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun updateCategory(category: Category, newName: String) {
-        val userId = auth.currentUser?.uid
+        lifecycleScope.launch {
+            try {
+                val updatedCategory = category.copy(name = newName)
 
-        viewLifecycleOwner.lifecycleScope.launch {
-            val updatedCategory = category.copy(name = newName)
-            database.categoryDao().updateCategory(updatedCategory)
+                // Use CategoryUtils to update category
+                CategoryUtils.updateCategory(requireContext(), updatedCategory)
 
-            // Update in Firestore if signed in
-            userId?.let {
-                firestore.collection("users")
-                    .document(it)
-                    .collection("categories")
-                    .whereEqualTo("name", category.name)
-                    .get()
-                    .addOnSuccessListener { querySnapshot ->
-                        for (document in querySnapshot.documents) {
-                            document.reference.update("name", newName)
-                        }
-                    }
+                Toast.makeText(requireContext(), "Category updated", Toast.LENGTH_SHORT).show()
+
+                // Refresh categories
+                loadCategories(category.userId)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating category", e)
+                Toast.makeText(requireContext(), "Error updating category: ${e.message}", Toast.LENGTH_SHORT).show()
             }
-
-            Toast.makeText(requireContext(), "Category updated", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -172,30 +236,23 @@ class CategoriesFragment : Fragment() {
             return
         }
 
-        val userId = auth.currentUser?.uid
-
         AlertDialog.Builder(requireContext())
             .setTitle("Delete Category")
             .setMessage("Are you sure you want to delete this category?")
             .setPositiveButton("Delete") { _, _ ->
-                viewLifecycleOwner.lifecycleScope.launch {
-                    database.categoryDao().deleteCategory(category)
+                lifecycleScope.launch {
+                    try {
+                        // Use CategoryUtils to delete category
+                        CategoryUtils.deleteCategory(requireContext(), category)
 
-                    // Delete from Firestore if signed in
-                    userId?.let {
-                        firestore.collection("users")
-                            .document(it)
-                            .collection("categories")
-                            .whereEqualTo("name", category.name)
-                            .get()
-                            .addOnSuccessListener { querySnapshot ->
-                                for (document in querySnapshot.documents) {
-                                    document.reference.delete()
-                                }
-                            }
+                        Toast.makeText(requireContext(), "Category deleted", Toast.LENGTH_SHORT).show()
+
+                        // Refresh categories
+                        loadCategories(category.userId)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error deleting category", e)
+                        Toast.makeText(requireContext(), "Error deleting category: ${e.message}", Toast.LENGTH_SHORT).show()
                     }
-
-                    Toast.makeText(requireContext(), "Category deleted", Toast.LENGTH_SHORT).show()
                 }
             }
             .setNegativeButton("Cancel", null)

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.DatePickerDialog
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
@@ -29,6 +30,7 @@ class AddTransactionActivity : AppCompatActivity() {
     private lateinit var viewModel: TransactionViewModel
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     private val firestore = FirebaseFirestore.getInstance()
+    private val TAG = "AddTransactionActivity"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,6 +38,32 @@ class AddTransactionActivity : AppCompatActivity() {
 
         // Initialize Firebase Auth
         auth = FirebaseAuth.getInstance()
+
+        val userId = auth.currentUser?.uid ?: "guest_user"
+
+        // Set up category spinner
+        val categorySpinner = findViewById<Spinner>(R.id.transactionCategorySpinner)
+
+        // Initialize categories when activity starts
+        lifecycleScope.launch {
+            try {
+                // This will ensure categories are synchronized and populated
+                CategoryUtils.initializeCategories(this@AddTransactionActivity)
+
+                // Then load categories to the spinner
+                CategoryUtils.loadCategoriesToSpinner(
+                    this@AddTransactionActivity,
+                    categorySpinner,
+                    userId,
+                    null // or a default category if needed
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading categories", e)
+                Toast.makeText(this@AddTransactionActivity,
+                    "Error loading categories: ${e.message}",
+                    Toast.LENGTH_SHORT).show()
+            }
+        }
 
         // Initialize ViewModel
         viewModel = TransactionViewModel(
@@ -46,7 +74,6 @@ class AddTransactionActivity : AppCompatActivity() {
         val nameInput = findViewById<EditText>(R.id.transactionNameInput)
         val amountInput = findViewById<EditText>(R.id.transactionAmountInput)
         val dateInput = findViewById<EditText>(R.id.transactionDateInput)
-        val categorySpinner = findViewById<Spinner>(R.id.transactionCategorySpinner)
         val merchantInput = findViewById<EditText>(R.id.transactionMerchantInput)
         val descriptionInput = findViewById<EditText>(R.id.transactionDescriptionInput)
         val saveButton = findViewById<Button>(R.id.saveTransactionButton)

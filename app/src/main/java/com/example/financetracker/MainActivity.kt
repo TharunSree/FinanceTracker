@@ -48,6 +48,7 @@ import com.example.financetracker.databinding.ActivityMainBinding
 import android.view.View
 import androidx.core.app.NotificationCompat
 import com.example.financetracker.database.dao.TransactionDao
+import com.example.financetracker.utils.CategoryUtils
 import com.example.financetracker.utils.GuestUserManager
 import kotlinx.coroutines.flow.first
 
@@ -230,6 +231,8 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        CategoryUtils.initializeCategories(this)
 
         // Add this to your MainActivity's onCreate() method
         findViewById<Button>(R.id.testSmsButton).setOnClickListener {
@@ -841,7 +844,8 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
             R.id.nav_settings -> {
                 // Handle settings navigation if implemented
-                Toast.makeText(this, "Settings not implemented yet", Toast.LENGTH_SHORT).show()
+                val intent = Intent(this, SettingsActivity::class.java)
+                startActivity(intent)
             }
 
             R.id.nav_login_logout -> {
