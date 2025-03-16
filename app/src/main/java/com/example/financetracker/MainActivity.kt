@@ -407,8 +407,8 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             startActivity(intent)
             finish()
         } else {
-            // Fetch user transactions from Firestore when user logs in
-            fetchUserTransactions(user.uid)
+            // User is logged in, only start listening if not already listening
+            transactionViewModel.startListeningToTransactions(user.uid)
         }
     }
 

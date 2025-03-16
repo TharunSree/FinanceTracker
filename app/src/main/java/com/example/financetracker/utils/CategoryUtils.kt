@@ -283,6 +283,7 @@ object CategoryUtils {
     }
 
     // Function to initialize categories if needed - call this from MainActivity or Application class
+    // Function to initialize categories if needed
     fun initializeCategories(context: Context) {
         val userId = FirebaseAuth.getInstance().currentUser?.uid ?: "guest_user"
 
@@ -292,28 +293,24 @@ object CategoryUtils {
                 val database = TransactionDatabase.getDatabase(context)
                 var categories = database.categoryDao().getAllCategories(userId).first()
 
-                // If the database is empty, try syncing from Firestore first
+                // Only proceed if there are no categories at all
                 if (categories.isEmpty()) {
                     Log.d(TAG, "No categories in DB, syncing from Firestore")
                     syncCategoriesFromFirestore(context, userId)
 
-                    // Check again
+                    // Check again after sync
                     categories = database.categoryDao().getAllCategories(userId).first()
 
-                    // If still empty after sync, force add default categories
+                    // If still empty after sync, add default categories
                     if (categories.isEmpty()) {
                         Log.d(TAG, "No categories after Firestore sync, adding defaults")
                         addDefaultCategoriesForced(context, userId)
                     }
                 } else {
-                    // Ensure default categories are present
-                    addDefaultCategories(context, userId)
+                    Log.d(TAG, "Categories already exist, skipping initialization")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error initializing categories", e)
-
-                // Force add default categories in case of error
-                addDefaultCategoriesForced(context, userId)
             }
         }
     }
