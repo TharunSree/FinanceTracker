@@ -54,14 +54,12 @@ class CategoriesFragment : Fragment() {
             recyclerView = view.findViewById(R.id.categoriesRecyclerView)
             recyclerView.layoutManager = LinearLayoutManager(requireContext())
 
-            // Find empty view if exists
             try {
                 emptyView = view.findViewById(R.id.emptyCategoriesText)
             } catch (e: Exception) {
                 Log.e(TAG, "Empty view not found", e)
             }
 
-            // Get user ID
             val userId = auth.currentUser?.uid ?: "guest_user"
             Log.d(TAG, "User ID: $userId")
 
@@ -72,33 +70,15 @@ class CategoriesFragment : Fragment() {
 
             recyclerView.adapter = categoryAdapter
 
-            // Set up FAB
             fab = requireActivity().findViewById(R.id.addCategoryFab)
             fab.visibility = View.VISIBLE
             fab.setOnClickListener {
                 showAddCategoryDialog()
             }
 
-            // Initial load of categories
-            lifecycleScope.launch {
-                try {
-                    // First check if we have any categories
-                    val existingCategories = database.categoryDao().getAllCategories(userId).firstOrNull() ?: emptyList()
+            // Start observing categories
+            observeCategories(userId)
 
-                    if (existingCategories.isEmpty()) {
-                        // Only sync from Firestore and add defaults if we have no categories
-                        Toast.makeText(context, "Initializing categories...", Toast.LENGTH_SHORT).show()
-                        CategoryUtils.syncCategoriesFromFirestore(requireContext(), userId)
-                        CategoryUtils.addDefaultCategories(requireContext(), userId)
-                    }
-
-                    // Start observing categories
-                    observeCategories(userId)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error during initial category setup", e)
-                    Toast.makeText(context, "Error loading categories", Toast.LENGTH_SHORT).show()
-                }
-            }
         } catch (e: Exception) {
             Log.e(TAG, "Error in onViewCreated", e)
             Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -108,9 +88,13 @@ class CategoriesFragment : Fragment() {
     private fun observeCategories(userId: String?) {
         lifecycleScope.launch {
             try {
-                Log.d(TAG, "Starting category observation for user: $userId")
+                // First check if we need to initialize categories
+                val initialCategories = database.categoryDao().getAllCategories(userId).firstOrNull()
+                if (initialCategories.isNullOrEmpty()) {
+                    CategoryUtils.initializeCategories(requireContext())
+                }
 
-                // Collect categories from flow
+                // Now start observing
                 database.categoryDao().getAllCategories(userId)
                     .catch { e ->
                         Log.e(TAG, "Error loading categories", e)
@@ -122,7 +106,6 @@ class CategoriesFragment : Fragment() {
                         Log.d(TAG, "Observed ${categories.size} categories")
                         categoryAdapter.submitList(categories)
 
-                        // Update empty state if needed
                         if (::emptyView.isInitialized) {
                             emptyView.visibility = if (categories.isEmpty()) View.VISIBLE else View.GONE
                         }

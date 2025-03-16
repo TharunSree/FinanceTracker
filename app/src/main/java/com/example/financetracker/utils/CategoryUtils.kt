@@ -30,35 +30,17 @@ object CategoryUtils {
 
             val database = TransactionDatabase.getDatabase(context)
 
-            // First try to get categories from database
+            // Get categories from database
             var categories = withContext(Dispatchers.IO) {
                 database.categoryDao().getAllCategories(userId).first()
             }
 
-            // If database has no categories, try to sync from Firestore first
+            // Only perform initialization if no categories exist
             if (categories.isEmpty()) {
-                Log.d(TAG, "No categories found in local DB, syncing from Firestore")
-                syncCategoriesFromFirestore(context, userId)
+                Log.d(TAG, "No categories found in local DB, initializing categories")
+                initializeCategories(context) // This will handle both Firestore sync and defaults
 
-                // Try again from database after sync
-                categories = withContext(Dispatchers.IO) {
-                    database.categoryDao().getAllCategories(userId).first()
-                }
-
-                // If still empty after sync, add default categories
-                if (categories.isEmpty()) {
-                    Log.d(TAG, "Still no categories after sync, adding defaults")
-                    addDefaultCategories(context, userId)
-
-                    // Get categories one more time
-                    categories = withContext(Dispatchers.IO) {
-                        database.categoryDao().getAllCategories(userId).first()
-                    }
-                }
-            } else {
-                // Ensure default categories are present
-                addDefaultCategories(context, userId)
-                // Reload categories after ensuring defaults are present
+                // Get categories again after initialization
                 categories = withContext(Dispatchers.IO) {
                     database.categoryDao().getAllCategories(userId).first()
                 }
