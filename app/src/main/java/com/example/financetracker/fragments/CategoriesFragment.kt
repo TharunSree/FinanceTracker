@@ -241,25 +241,14 @@ class CategoriesFragment : Fragment() {
     }
 
     private fun deleteCategory(category: Category) {
-        // Don't allow deletion of default categories
-        if (category.isDefault) {
-            Toast.makeText(requireContext(), "Cannot delete default categories", Toast.LENGTH_SHORT).show()
-            return
-        }
-
         AlertDialog.Builder(requireContext())
             .setTitle("Delete Category")
             .setMessage("Are you sure you want to delete this category?")
             .setPositiveButton("Delete") { _, _ ->
                 lifecycleScope.launch {
                     try {
-                        // Use CategoryUtils to delete category
                         CategoryUtils.deleteCategory(requireContext(), category)
-
                         Toast.makeText(requireContext(), "Category deleted", Toast.LENGTH_SHORT).show()
-
-                        // Refresh categories
-                        loadCategories(category.userId)
                     } catch (e: Exception) {
                         Log.e(TAG, "Error deleting category", e)
                         Toast.makeText(requireContext(), "Error deleting category: ${e.message}", Toast.LENGTH_SHORT).show()

@@ -188,7 +188,7 @@ object CategoryUtils {
                         val category = Category(
                             name = name,
                             userId = userId,
-                            isDefault = true
+                            isDefault = false  // Changed to false so they can be edited/deleted
                         )
 
                         try {
@@ -210,7 +210,7 @@ object CategoryUtils {
                                         .collection("categories")
                                         .add(mapOf(
                                             "name" to name,
-                                            "isDefault" to true
+                                            "isDefault" to false  // Changed to false in Firestore too
                                         ))
                                 }
                             }
@@ -264,6 +264,7 @@ object CategoryUtils {
 
         withContext(Dispatchers.IO) {
             try {
+                // No need to check isDefault anymore
                 database.categoryDao().updateCategory(category)
 
                 category.userId?.let { userId ->
@@ -276,7 +277,12 @@ object CategoryUtils {
                             .await()
                             .documents
                             .forEach { doc ->
-                                doc.reference.update("name", category.name)
+                                doc.reference.update(
+                                    mapOf(
+                                        "name" to category.name,
+                                        "isDefault" to false  // Ensure it's marked as non-default
+                                    )
+                                )
                             }
                     }
                 }
@@ -288,11 +294,7 @@ object CategoryUtils {
     }
 
     suspend fun deleteCategory(context: Context, category: Category) {
-        if (category.isDefault) {
-            Log.d(TAG, "Attempted to delete default category: ${category.name}")
-            throw IllegalArgumentException("Cannot delete default category")
-        }
-
+        // Remove the isDefault check
         val database = TransactionDatabase.getDatabase(context)
         val firestore = FirebaseFirestore.getInstance()
 
