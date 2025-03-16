@@ -88,13 +88,7 @@ class CategoriesFragment : Fragment() {
     private fun observeCategories(userId: String?) {
         lifecycleScope.launch {
             try {
-                // First check if we need to initialize categories
-                val initialCategories = database.categoryDao().getAllCategories(userId).firstOrNull()
-                if (initialCategories.isNullOrEmpty()) {
-                    CategoryUtils.initializeCategories(requireContext())
-                }
-
-                // Now start observing
+                // Just observe the categories - no initialization here
                 database.categoryDao().getAllCategories(userId)
                     .catch { e ->
                         Log.e(TAG, "Error loading categories", e)
