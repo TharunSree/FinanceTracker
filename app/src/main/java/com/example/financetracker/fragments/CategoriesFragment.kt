@@ -79,17 +79,21 @@ class CategoriesFragment : Fragment() {
                 showAddCategoryDialog()
             }
 
-            // First sync from Firestore
+            // Initial load of categories
             lifecycleScope.launch {
                 try {
-                    // Show loading
-                    Toast.makeText(context, "Loading categories...", Toast.LENGTH_SHORT).show()
+                    // First check if we have any categories
+                    val existingCategories = database.categoryDao().getAllCategories(userId).firstOrNull() ?: emptyList()
 
-                    // Sync from Firestore
-                    CategoryUtils.syncCategoriesFromFirestore(requireContext(), userId)
+                    if (existingCategories.isEmpty()) {
+                        // Only sync from Firestore and add defaults if we have no categories
+                        Toast.makeText(context, "Initializing categories...", Toast.LENGTH_SHORT).show()
+                        CategoryUtils.syncCategoriesFromFirestore(requireContext(), userId)
+                        CategoryUtils.addDefaultCategories(requireContext(), userId)
+                    }
 
-                    // Load categories from local DB
-                    loadCategories(userId)
+                    // Start observing categories
+                    observeCategories(userId)
                 } catch (e: Exception) {
                     Log.e(TAG, "Error during initial category setup", e)
                     Toast.makeText(context, "Error loading categories", Toast.LENGTH_SHORT).show()
@@ -98,6 +102,37 @@ class CategoriesFragment : Fragment() {
         } catch (e: Exception) {
             Log.e(TAG, "Error in onViewCreated", e)
             Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun observeCategories(userId: String?) {
+        lifecycleScope.launch {
+            try {
+                Log.d(TAG, "Starting category observation for user: $userId")
+
+                // Collect categories from flow
+                database.categoryDao().getAllCategories(userId)
+                    .catch { e ->
+                        Log.e(TAG, "Error loading categories", e)
+                        context?.let {
+                            Toast.makeText(it, "Error loading categories", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    .collect { categories ->
+                        Log.d(TAG, "Observed ${categories.size} categories")
+                        categoryAdapter.submitList(categories)
+
+                        // Update empty state if needed
+                        if (::emptyView.isInitialized) {
+                            emptyView.visibility = if (categories.isEmpty()) View.VISIBLE else View.GONE
+                        }
+                    }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in observeCategories", e)
+                context?.let {
+                    Toast.makeText(it, "Error observing categories: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
@@ -142,10 +177,6 @@ class CategoriesFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         fab.visibility = View.VISIBLE
-
-        // Refresh categories on resume
-        val userId = auth.currentUser?.uid ?: "guest_user"
-        loadCategories(userId)
     }
 
     override fun onPause() {
