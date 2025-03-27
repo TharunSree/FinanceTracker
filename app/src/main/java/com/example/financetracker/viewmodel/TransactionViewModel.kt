@@ -167,12 +167,38 @@ class TransactionViewModel(
         }
     }
 
+    // Add a flag to track transaction source
+    private var isLocalUpdate = false
+
     // Method to add a transaction
     fun addTransaction(transaction: Transaction) = viewModelScope.launch {
-        repository.addTransaction(transaction)
+        try {
+            isLocalUpdate = true
 
-        // 4. Update statistics
-        updateStatistics()
+            // Set the userId if not already set
+            if (transaction.userId.isEmpty()) {
+                transaction.userId = getUserId(getApplication())
+            }
+
+            // Add to Room database first
+            val insertedId = transactionDao.insertTransaction(transaction)
+
+            // Update the transaction with the new ID if it was auto-generated
+            if (transaction.id == 0) {
+                transaction.id = insertedId.toInt()
+            }
+
+            // Only sync to Firebase if not in guest mode
+            if (!GuestUserManager.isGuestMode(transaction.userId)) {
+                syncTransactionToFirestore(transaction)
+            }
+
+            updateStatistics()
+            isLocalUpdate = false
+        } catch (e: Exception) {
+            Log.e("TransactionViewModel", "Error adding transaction", e)
+            isLocalUpdate = false
+        }
     }
 
     // Method to delete a transaction
@@ -441,8 +467,7 @@ class TransactionViewModel(
                         return@addSnapshotListener
                     }
 
-                    if (snapshots == null) {
-                        Log.d("TransactionViewModel", "Null snapshot received")
+                    if (snapshots == null || isLocalUpdate) {
                         return@addSnapshotListener
                     }
 
@@ -460,8 +485,7 @@ class TransactionViewModel(
                                     val category = doc.getString("category") ?: ""
                                     val merchant = doc.getString("merchant") ?: ""
                                     val description = doc.getString("description") ?: ""
-                                    val documentId =
-                                        doc.id // Always use the actual Firestore document ID
+                                    val documentId = doc.id
 
                                     val transaction = Transaction(
                                         id = id,
@@ -484,57 +508,25 @@ class TransactionViewModel(
 
                             // Smart merge with existing data
                             val currentTransactions = transactionDao.getAllTransactions().first()
-                            val firestoreDocIds = transactions.map { it.documentId }.toSet()
 
-                            // Update or insert transactions from Firestore
-                            // Update or insert transactions from Firestore
                             for (transaction in transactions) {
-                                // First check for document ID match
-                                val existingByDocId = currentTransactions.find {
-                                    it.documentId == transaction.documentId && !transaction.documentId.isEmpty()
+                                val existingTransaction = currentTransactions.find {
+                                    (it.documentId == transaction.documentId && transaction.documentId.isNotEmpty()) ||
+                                            (it.id == transaction.id && transaction.id != 0) ||
+                                            (it.amount == transaction.amount &&
+                                                    it.date == transaction.date &&
+                                                    it.name == transaction.name &&
+                                                    it.userId == transaction.userId)
                                 }
 
-                                // Then check for ID match
-                                val existingById = if (existingByDocId == null) {
-                                    currentTransactions.find { it.id == transaction.id && transaction.id != 0 }
-                                } else null
-
-                                // Finally check for a "similar" transaction (same amount, date, name)
-                                val existingSimilar = if (existingByDocId == null && existingById == null) {
-                                    currentTransactions.find {
-                                        it.amount == transaction.amount &&
-                                                Math.abs(it.date - transaction.date) < 60000 && // Within 1 minute
-                                                it.name == transaction.name &&
-                                                it.userId == transaction.userId
-                                    }
-                                } else null
-
-                                when {
-                                    existingByDocId != null -> {
-                                        // Update existing transaction by document ID
-                                        Log.d("TransactionViewModel", "Updating existing transaction by docId: ${transaction.documentId}")
-                                        transactionDao.updateTransaction(transaction)
-                                    }
-                                    existingById != null -> {
-                                        // Update document ID and update transaction
-                                        Log.d("TransactionViewModel", "Updating existing transaction by id: ${transaction.id}")
-                                        transaction.documentId = existingById.documentId.ifEmpty { transaction.documentId }
-                                        transactionDao.updateTransaction(transaction)
-                                    }
-                                    existingSimilar != null -> {
-                                        // Similar transaction found, update with new document ID if needed
-                                        Log.d("TransactionViewModel", "Found similar transaction, updating with new data")
-                                        if (transaction.documentId.isNotEmpty() && existingSimilar.documentId.isEmpty()) {
-                                            existingSimilar.documentId = transaction.documentId
-                                        }
-                                        existingSimilar.name = transaction.name
-                                        existingSimilar.category = transaction.category
-                                        transactionDao.updateTransaction(existingSimilar)
-                                    }
-                                    else -> {
-                                        // No similar transaction found, insert as new
-                                        Log.d("TransactionViewModel", "Inserting new transaction from Firestore")
-                                        transactionDao.insertTransaction(transaction)
+                                if (existingTransaction == null) {
+                                    // Only insert if no matching transaction exists
+                                    transactionDao.insertTransaction(transaction)
+                                } else {
+                                    // Update existing transaction if needed
+                                    if (existingTransaction.documentId.isEmpty() && transaction.documentId.isNotEmpty()) {
+                                        existingTransaction.documentId = transaction.documentId
+                                        transactionDao.updateTransaction(existingTransaction)
                                     }
                                 }
                             }
@@ -549,6 +541,7 @@ class TransactionViewModel(
             Log.e("TransactionViewModel", "Error setting up Firestore listener", e)
         }
     }
+
 
     // Load from Firestore once (not real-time)
     fun loadFromFirestore(userId: String) {
@@ -657,16 +650,13 @@ class TransactionViewModel(
         }
 
         try {
-            // First, check if we already have this transaction in the database with a document ID
             viewModelScope.launch {
-                // If the transaction already has a document ID, use that
                 val docRef = if (transaction.documentId.isNotEmpty()) {
                     firestore.collection("users")
                         .document(userId)
                         .collection("transactions")
                         .document(transaction.documentId)
                 } else {
-                    // Create a new document with auto-generated ID
                     firestore.collection("users")
                         .document(userId)
                         .collection("transactions")
@@ -680,7 +670,6 @@ class TransactionViewModel(
                     transactionDao.updateTransaction(transaction)
                 }
 
-                // Create a map with all transaction data
                 val transactionMap = hashMapOf(
                     "id" to transaction.id,
                     "name" to transaction.name,
@@ -693,7 +682,6 @@ class TransactionViewModel(
                     "userId" to userId
                 )
 
-                // Save to Firestore
                 docRef.set(transactionMap)
                     .addOnSuccessListener {
                         Log.d(

@@ -8,7 +8,7 @@ import com.google.firebase.firestore.IgnoreExtraProperties
 @Entity(tableName = "transaction_table")
 data class Transaction(
     @PrimaryKey(autoGenerate = true)
-    val id: Int = 0,
+    var id: Int = 0,  // Changed from val to var
     var name: String = "",
     val amount: Double = 0.0,
     val date: Long = 0L,
@@ -16,7 +16,6 @@ data class Transaction(
     val merchant: String = "",
     val description: String = "",
     var documentId: String = "",
-    // Making userId non-nullable with default empty string
     var userId: String = ""
 ) {
     // Required no-argument constructor for Firestore
@@ -29,6 +28,6 @@ data class Transaction(
         merchant = "",
         description = "",
         documentId = "",
-        userId = ""  // Add default value here as well
+        userId = ""
     )
 }

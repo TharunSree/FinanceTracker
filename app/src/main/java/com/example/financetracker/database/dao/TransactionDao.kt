@@ -18,7 +18,11 @@ import kotlinx.coroutines.flow.Flow
 interface TransactionDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertTransaction(transaction: Transaction)
+    suspend fun insertTransaction(transaction: Transaction) : Long
+
+    suspend fun insertTransactionAndGetId(transaction: Transaction): Int {
+        return insertTransaction(transaction).toInt()
+    }
 
     @Update
     suspend fun updateTransaction(transaction: Transaction)
