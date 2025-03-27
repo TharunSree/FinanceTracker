@@ -162,13 +162,14 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
     }
 
     private fun observeTransactions() {
-        transactionViewModel.transactions.observe(this) { transactions ->
+        transactionViewModel.filteredTransaction.observe(this) { transactions ->
             populateTable(transactions)
         }
     }
 
     private fun populateTable(transactions: List<Transaction>) {
-        transactionTableLayout.removeViews(1, transactionTableLayout.childCount - 1) // Clear existing rows except the header
+        // Clear all rows (no need to keep header as it's separate now)
+        transactionTableLayout.removeAllViews()
 
         transactions.forEach { transaction ->
             val tableRow = TableRow(this).apply {
@@ -191,12 +192,10 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
                 createTableCell(transaction.category)
             )
 
-            // Add cells to row
             cells.forEach { cell ->
                 tableRow.addView(cell)
             }
 
-            // Add alternating row background
             if (transactionTableLayout.childCount % 2 == 0) {
                 tableRow.setBackgroundColor(ContextCompat.getColor(this, R.color.row_even))
             } else {

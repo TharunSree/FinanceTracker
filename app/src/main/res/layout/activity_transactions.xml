@@ -44,30 +44,30 @@
                         android:id="@+id/chipAll"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="All"
                         android:checkable="true"
-                        android:checked="true" />
+                        android:checked="true"
+                        android:text="All" />
 
                     <com.google.android.material.chip.Chip
                         android:id="@+id/chipToday"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Today"
-                        android:checkable="true" />
+                        android:checkable="true"
+                        android:text="Today" />
 
                     <com.google.android.material.chip.Chip
                         android:id="@+id/chipWeek"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="This Week"
-                        android:checkable="true" />
+                        android:checkable="true"
+                        android:text="This Week" />
 
                     <com.google.android.material.chip.Chip
                         android:id="@+id/chipMonth"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="This Month"
-                        android:checkable="true" />
+                        android:checkable="true"
+                        android:text="This Month" />
                 </com.google.android.material.chip.ChipGroup>
 
                 <!-- Category Filter -->
@@ -88,58 +88,81 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <TableLayout
-            android:id="@+id/transactionTableLayout"
+        <!-- Table Section with Fixed Header -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:padding="16dp"
-            android:shrinkColumns="*"
-            android:stretchColumns="*">
+            android:orientation="vertical">
 
-            <!-- Table header -->
-            <TableRow
+            <!-- Fixed Header -->
+            <TableLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="@color/table_header_background">
+                android:shrinkColumns="*"
+                android:stretchColumns="*">
 
-                <TextView
-                    android:layout_width="0dp"
+                <TableRow
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:padding="16dp"
-                    android:text="Name"
-                    android:textStyle="bold"
-                    android:textColor="@android:color/white" />
+                    android:layout_marginStart="18dp"
+                    android:layout_marginEnd="18dp"
+                    android:background="@color/table_header_background">
 
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:padding="16dp"
-                    android:text="Amount"
-                    android:textStyle="bold"
-                    android:textColor="@android:color/white" />
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:padding="16dp"
+                        android:text="Name"
+                        android:textColor="@android:color/white"
+                        android:textStyle="bold" />
 
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:padding="16dp"
-                    android:text="Date"
-                    android:textStyle="bold"
-                    android:textColor="@android:color/white" />
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:padding="16dp"
+                        android:text="Amount"
+                        android:textColor="@android:color/white"
+                        android:textStyle="bold" />
 
-                <TextView
-                    android:layout_width="0dp"
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:padding="16dp"
+                        android:text="Date"
+                        android:textColor="@android:color/white"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:padding="16dp"
+                        android:text="Category"
+                        android:textColor="@android:color/white"
+                        android:textStyle="bold" />
+                </TableRow>
+            </TableLayout>
+
+            <!-- Scrollable Content -->
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:fillViewport="true">
+
+                <TableLayout
+                    android:id="@+id/transactionTableLayout"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:padding="16dp"
-                    android:text="Category"
-                    android:textStyle="bold"
-                    android:textColor="@android:color/white" />
-            </TableRow>
-        </TableLayout>
+                    android:shrinkColumns="*"
+                    android:stretchColumns="*" />
+
+            </ScrollView>
+        </LinearLayout>
 
         <com.google.android.material.floatingactionbutton.FloatingActionButton
             android:id="@+id/addTransactionButton"
@@ -158,7 +181,7 @@
         android:layout_height="match_parent"
         android:layout_gravity="start"
         app:headerLayout="@layout/nav_header"
-        app:menu="@menu/nav_menu"
-        app:itemTextColor="@color/colorText" />
+        app:itemTextColor="@color/colorText"
+        app:menu="@menu/nav_menu" />
 
 </androidx.drawerlayout.widget.DrawerLayout>

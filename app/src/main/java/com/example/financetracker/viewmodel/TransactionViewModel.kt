@@ -51,6 +51,15 @@ class TransactionViewModel(
     private var transactionListener: ListenerRegistration? = null
     private val auth = FirebaseAuth.getInstance()
 
+    private var currentFilterState = FilterState.ALL
+    private var currentCategory: String? = null
+    private val _filteredTransaction = MutableLiveData<List<Transaction>>()
+    val filteredTransaction: LiveData<List<Transaction>> = _filteredTransaction
+
+    enum class FilterState {
+        ALL, TODAY, WEEK, MONTH
+    }
+
     private val _categories = MutableLiveData<List<String>>()
     val categories: LiveData<List<String>> = _categories
     init {
@@ -316,48 +325,97 @@ class TransactionViewModel(
     }
 
     // Add these convenience methods
-    fun loadTodayTransactions() {
-        val calendar = Calendar.getInstance()
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        calendar.set(Calendar.SECOND, 0)
-        calendar.set(Calendar.MILLISECOND, 0)
+    fun loadAllTransactions() = viewModelScope.launch {
+        currentFilterState = FilterState.ALL
+        currentCategory = null
+        val allTransactions = transactionDao.getAllTransactions().first()
+        _filteredTransaction.value = allTransactions
+        updateStatistics()
+    }
 
+    fun loadTodayTransactions() = viewModelScope.launch {
+        currentFilterState = FilterState.TODAY
+        val calendar = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
         val startTime = calendar.timeInMillis
         calendar.add(Calendar.DAY_OF_YEAR, 1)
         val endTime = calendar.timeInMillis
 
-        loadTransactionsByDateRange(startTime, endTime)
+        val transactions = transactionDao.getTransactionsByDateRange(startTime, endTime)
+        applyFilters(transactions)
     }
 
-    fun loadWeekTransactions() {
+    fun loadWeekTransactions() = viewModelScope.launch {
+        currentFilterState = FilterState.WEEK
         val calendar = Calendar.getInstance()
+        val endTime = calendar.timeInMillis
         calendar.add(Calendar.DAY_OF_YEAR, -7)
         val startTime = calendar.timeInMillis
-        calendar.add(Calendar.DAY_OF_YEAR, 7)
-        val endTime = calendar.timeInMillis
 
-        loadTransactionsByDateRange(startTime, endTime)
+        val transactions = transactionDao.getTransactionsByDateRange(startTime, endTime)
+        applyFilters(transactions)
     }
 
-    fun loadMonthTransactions() {
+    fun loadMonthTransactions() = viewModelScope.launch {
+        currentFilterState = FilterState.MONTH
         val calendar = Calendar.getInstance()
+        val endTime = calendar.timeInMillis
         calendar.add(Calendar.MONTH, -1)
         val startTime = calendar.timeInMillis
-        calendar.add(Calendar.MONTH, 1)
-        val endTime = calendar.timeInMillis
 
-        loadTransactionsByDateRange(startTime, endTime)
-    }
-
-    // Load all transactions
-    fun loadAllTransactions() = viewModelScope.launch {
-        val allTransactions = transactionDao.getAllTransactions().first() // Convert Flow to List
-        _filteredTransactions.value = allTransactions
+        val transactions = transactionDao.getTransactionsByDateRange(startTime, endTime)
+        applyFilters(transactions)
     }
 
     fun filterByCategory(category: String) = viewModelScope.launch {
-        _filteredTransactions.value = repository.getTransactionsByCategory(category)
+        currentCategory = if (category == "All Categories") null else category
+
+        // Get transactions based on current date filter
+        val transactions = when (currentFilterState) {
+            FilterState.ALL -> transactionDao.getAllTransactions().first()
+            FilterState.TODAY -> {
+                val calendar = Calendar.getInstance().apply {
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                val startTime = calendar.timeInMillis
+                calendar.add(Calendar.DAY_OF_YEAR, 1)
+                val endTime = calendar.timeInMillis
+                transactionDao.getTransactionsByDateRange(startTime, endTime)
+            }
+            FilterState.WEEK -> {
+                val calendar = Calendar.getInstance()
+                val endTime = calendar.timeInMillis
+                calendar.add(Calendar.DAY_OF_YEAR, -7)
+                val startTime = calendar.timeInMillis
+                transactionDao.getTransactionsByDateRange(startTime, endTime)
+            }
+            FilterState.MONTH -> {
+                val calendar = Calendar.getInstance()
+                val endTime = calendar.timeInMillis
+                calendar.add(Calendar.MONTH, -1)
+                val startTime = calendar.timeInMillis
+                transactionDao.getTransactionsByDateRange(startTime, endTime)
+            }
+        }
+
+        applyFilters(transactions)
+    }
+
+    private fun applyFilters(transactions: List<Transaction>) {
+        val filtered = if (currentCategory != null) {
+            transactions.filter { it.category == currentCategory }
+        } else {
+            transactions
+        }
+        _filteredTransaction.value = filtered
+        updateStatistics()
     }
 
     // Method to start listening to Firestore updates for the user's transactions
