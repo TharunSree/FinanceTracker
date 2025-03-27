@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.view.MenuItem
+import android.widget.ArrayAdapter
+import android.widget.AutoCompleteTextView
 import android.widget.Button
 import android.widget.TableLayout
 import android.widget.TableRow
@@ -17,6 +19,8 @@ import com.example.financetracker.MainActivity
 import com.example.financetracker.database.entity.Transaction
 import com.example.financetracker.databinding.NavHeaderBinding
 import com.example.financetracker.viewmodel.TransactionViewModel
+import com.google.android.material.chip.ChipGroup
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.navigation.NavigationView
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -25,13 +29,18 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
 
     override fun getLayoutResourceId(): Int = R.layout.activity_transactions
 
-
-
     private lateinit var transactionTableLayout: TableLayout
+    private lateinit var filterChipGroup: ChipGroup
+    private lateinit var categoryFilterAutoComplete: AutoCompleteTextView
+    private var currentFilter: TransactionFilter = TransactionFilter.ALL
 
     private val transactionViewModel: TransactionViewModel by viewModels {
         val database = TransactionDatabase.getDatabase(this)
         TransactionViewModel.Factory(database, application)
+    }
+
+    enum class TransactionFilter {
+        ALL, TODAY, WEEK, MONTH
     }
 
     private val addTransactionLauncher = registerForActivityResult(
@@ -71,7 +80,12 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
         setContentView(R.layout.activity_transactions)
 
         transactionTableLayout = findViewById(R.id.transactionTableLayout)
-        setupAddTransactionButton()
+        filterChipGroup = findViewById(R.id.filterChipGroup)
+        categoryFilterAutoComplete = findViewById(R.id.categoryFilterAutoComplete)
+
+        setupFilters()
+        setupCategoryFilter()
+        setupFab()
         observeTransactions()
         updateNavHeader()
 
@@ -80,6 +94,63 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
 
         // Initialize the navigation drawer
         setupNavigationDrawer()
+    }
+
+    private fun setupFilters() {
+        filterChipGroup.setOnCheckedStateChangeListener { group, checkedIds ->
+            when (checkedIds.firstOrNull()) {
+                R.id.chipAll -> {
+                    currentFilter = TransactionFilter.ALL
+                    transactionViewModel.loadAllTransactions()
+                }
+                R.id.chipToday -> {
+                    currentFilter = TransactionFilter.TODAY
+                    transactionViewModel.loadTodayTransactions()
+                }
+                R.id.chipWeek -> {
+                    currentFilter = TransactionFilter.WEEK
+                    transactionViewModel.loadWeekTransactions()
+                }
+                R.id.chipMonth -> {
+                    currentFilter = TransactionFilter.MONTH
+                    transactionViewModel.loadMonthTransactions()
+                }
+            }
+        }
+    }
+
+    private fun setupCategoryFilter() {
+        // Observe categories from ViewModel
+        transactionViewModel.categories.observe(this) { categories ->
+            val adapter = ArrayAdapter(
+                this,
+                android.R.layout.simple_dropdown_item_1line,
+                listOf("All Categories") + categories
+            )
+            categoryFilterAutoComplete.setAdapter(adapter)
+        }
+
+        categoryFilterAutoComplete.setOnItemClickListener { _, _, position, _ ->
+            val selectedCategory = categoryFilterAutoComplete.adapter.getItem(position) as String
+            if (selectedCategory == "All Categories") {
+                // Reset category filter but maintain date filter
+                when (currentFilter) {
+                    TransactionFilter.ALL -> transactionViewModel.loadAllTransactions()
+                    TransactionFilter.TODAY -> transactionViewModel.loadTodayTransactions()
+                    TransactionFilter.WEEK -> transactionViewModel.loadWeekTransactions()
+                    TransactionFilter.MONTH -> transactionViewModel.loadMonthTransactions()
+                }
+            } else {
+                transactionViewModel.filterByCategory(selectedCategory)
+            }
+        }
+    }
+
+    private fun setupFab() {
+        findViewById<FloatingActionButton>(R.id.addTransactionButton).setOnClickListener {
+            val intent = Intent(this, AddTransactionActivity::class.java)
+            addTransactionLauncher.launch(intent)
+        }
     }
 
 

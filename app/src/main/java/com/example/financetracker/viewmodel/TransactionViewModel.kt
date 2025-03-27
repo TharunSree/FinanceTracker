@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import java.util.Calendar
 import android.app.Application
 import com.example.financetracker.database.entity.Merchant
+import com.example.financetracker.repository.TransactionRepository
 
 data class CategoryStatistics(
     val maxExpense: Double,
@@ -36,9 +37,46 @@ class TransactionViewModel(
 ) : AndroidViewModel(application) {
 
     private val transactionDao = database.transactionDao()
+    private val repository: TransactionRepository
+    init {
+        val database = TransactionDatabase.getDatabase(application)
+        repository = TransactionRepository(database.transactionDao(), application)
+
+        // Try to sync pending transactions when ViewModel is created
+        viewModelScope.launch {
+            repository.syncPendingTransactions()
+        }
+    }
     private val firestore = FirebaseFirestore.getInstance()
     private var transactionListener: ListenerRegistration? = null
     private val auth = FirebaseAuth.getInstance()
+
+    private val _categories = MutableLiveData<List<String>>()
+    val categories: LiveData<List<String>> = _categories
+    init {
+        viewModelScope.launch {
+            loadInitialData()
+        }
+    }
+
+    private suspend fun loadInitialData() {
+        try {
+            updateCategories()
+            loadAllTransactions()
+        } catch (e: Exception) {
+            Log.e("TransactionViewModel", "Error loading initial data", e)
+        }
+    }
+
+    private suspend fun updateCategories() {
+        val distinctCategories = database.transactionDao().getAllCategories()
+        _categories.postValue(distinctCategories)
+    }
+
+    fun refreshCategories() = viewModelScope.launch {
+        updateCategories()
+    }
+
 
     // Get current user ID
     val userId: String?
@@ -122,16 +160,7 @@ class TransactionViewModel(
 
     // Method to add a transaction
     fun addTransaction(transaction: Transaction) = viewModelScope.launch {
-        // 1. Ensure transaction has userId (either authenticated or guest)
-        if (transaction.userId.isNullOrEmpty()) {
-            transaction.userId = getUserId(getApplication())
-        }
-
-        // 2. Insert into local database first
-        transactionDao.insertTransaction(transaction)
-
-        // 3. Sync with Firestore only for authenticated users
-        syncTransactionToFirestore(transaction)
+        repository.addTransaction(transaction)
 
         // 4. Update statistics
         updateStatistics()
@@ -174,6 +203,11 @@ class TransactionViewModel(
 
         // 4. Update statistics
         updateStatistics()
+    }
+
+    fun syncWithFirestore() = viewModelScope.launch {
+        repository.loadFromFirestore()
+        repository.syncPendingTransactions()
     }
 
     private fun getUserId(context: Context): String {
@@ -320,6 +354,10 @@ class TransactionViewModel(
     fun loadAllTransactions() = viewModelScope.launch {
         val allTransactions = transactionDao.getAllTransactions().first() // Convert Flow to List
         _filteredTransactions.value = allTransactions
+    }
+
+    fun filterByCategory(category: String) = viewModelScope.launch {
+        _filteredTransactions.value = repository.getTransactionsByCategory(category)
     }
 
     // Method to start listening to Firestore updates for the user's transactions
