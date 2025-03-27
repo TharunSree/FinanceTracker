@@ -175,24 +175,22 @@ class TransactionViewModel(
         try {
             isLocalUpdate = true
 
-            // Set the userId if not already set
-            if (transaction.userId.isEmpty()) {
+            if (transaction.userId.isNullOrEmpty()) {
                 transaction.userId = getUserId(getApplication())
             }
 
-            // Add to Room database first
-            val insertedId = transactionDao.insertTransaction(transaction)
+            val insertedId = transactionDao.insertTransactionAndGetId(transaction)
 
-            // Update the transaction with the new ID if it was auto-generated
             if (transaction.id == 0) {
-                transaction.id = insertedId.toInt()
+                transaction.id = insertedId
             }
 
-            // Only sync to Firebase if not in guest mode
             if (!GuestUserManager.isGuestMode(transaction.userId)) {
                 syncTransactionToFirestore(transaction)
             }
 
+            // Refresh both filtered lists
+            loadAllTransactions()
             updateStatistics()
             isLocalUpdate = false
         } catch (e: Exception) {
@@ -355,7 +353,8 @@ class TransactionViewModel(
         currentFilterState = FilterState.ALL
         currentCategory = null
         val allTransactions = transactionDao.getAllTransactions().first()
-        _filteredTransaction.value = allTransactions
+        _filteredTransactions.value = allTransactions
+        _filteredTransaction.postValue(allTransactions)
         updateStatistics()
     }
 
@@ -440,7 +439,8 @@ class TransactionViewModel(
         } else {
             transactions
         }
-        _filteredTransaction.value = filtered
+        _filteredTransactions.value = filtered
+        _filteredTransaction.postValue(filtered)
         updateStatistics()
     }
 
@@ -688,6 +688,9 @@ class TransactionViewModel(
                             "TransactionViewModel",
                             "Transaction synced to Firestore: ${transaction.id}, docId: ${transaction.documentId}"
                         )
+                        viewModelScope.launch {
+                            loadAllTransactions()
+                        }
                     }
                     .addOnFailureListener { e ->
                         Log.e("TransactionViewModel", "Failed to sync transaction to Firestore", e)
