@@ -48,6 +48,7 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.navigation.NavigationView
 import com.example.financetracker.databinding.ActivityMainBinding
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
@@ -438,6 +439,10 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
     private fun setupComposeStatistics() {
         binding.statisticsComposeView.apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 MaterialTheme {

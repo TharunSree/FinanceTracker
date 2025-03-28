@@ -3,6 +3,7 @@ package com.example.financetracker.ui.screens
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -42,122 +43,135 @@ object ChartColors {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatisticsScreen(viewModel: StatisticsViewModel) {
-    val scrollState = rememberScrollState()
-    val selectedPeriod by remember { mutableStateOf("Month") }
+    // Collect the period from ViewModel using collectAsStateWithLifecycle
+    val selectedPeriod by viewModel.selectedPeriod.collectAsStateWithLifecycle()
 
     Surface(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.background
     ) {
-        Column(
+        LazyColumn(
             modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(scrollState)
+                .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // Header with current date
-            Text(
-                text = "Financial Statistics",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
+            // Header
+            item {
+                Text(
+                    text = "Financial Statistics",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
 
-            Text(
-                text = SimpleDateFormat("MMMM dd, yyyy", Locale.getDefault()).format(Date()),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
+            // Current Date
+            item {
+                Text(
+                    text = SimpleDateFormat("MMMM dd, yyyy", Locale.getDefault()).format(Date()),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+            }
 
             // Period Selection Chips
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf("Week", "Month", "Year").forEach { period ->
-                    FilterChip(
-                        selected = selectedPeriod == period,
-                        onClick = { /* viewModel.setPeriod(period) */ },
-                        label = { Text(period) },
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    StatisticsViewModel.TimePeriod.entries.forEach { period ->
+                        FilterChip(
+                            selected = selectedPeriod == period,
+                            onClick = { viewModel.updatePeriod(period) },
+                            label = { Text(period.name) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
+
+            // Summary Cards
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SummaryCard(
+                        title = "Total Expenses",
+                        value = "₹25,000",
+                        modifier = Modifier.weight(1f)
+                    )
+                    SummaryCard(
+                        title = "Transactions",
+                        value = "15",
                         modifier = Modifier.weight(1f)
                     )
                 }
             }
 
-            // Summary Cards
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                SummaryCard(
-                    title = "Total Expenses",
-                    value = "₹25,000",
-                    modifier = Modifier.weight(1f)
-                )
-                SummaryCard(
-                    title = "Transactions",
-                    value = "15",
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
             // Expense Distribution Chart
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text(
-                        text = "Expense Distribution",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = "Expense Distribution",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
 
-                    ExpenseDistributionChart(
-                        data = listOf(
-                            ExpenseCategory("Food", 8000.0),
-                            ExpenseCategory("Transport", 5000.0),
-                            ExpenseCategory("Shopping", 7000.0),
-                            ExpenseCategory("Bills", 5000.0)
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp)
-                    )
+                        ExpenseDistributionChart(
+                            data = listOf(
+                                ExpenseCategory("Food", 8000.0),
+                                ExpenseCategory("Transport", 5000.0),
+                                ExpenseCategory("Shopping", 7000.0),
+                                ExpenseCategory("Bills", 5000.0)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp)
+                        )
+                    }
                 }
             }
 
             // Daily Spending Chart
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text(
-                        text = "Daily Spending",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = "Daily Spending",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
 
-                    DailySpendingChart(
-                        data = generateSampleDailyData(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp)
-                    )
+                        DailySpendingChart(
+                            data = generateSampleDailyData(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp)
+                        )
+                    }
                 }
             }
         }
