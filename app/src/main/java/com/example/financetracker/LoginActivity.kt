@@ -1,11 +1,11 @@
 package com.example.financetracker
 
+import com.example.financetracker.activities.BaseActivityWithBack
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.databinding.ActivityLoginBinding
@@ -16,7 +16,10 @@ import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
 
 // LoginActivity should NOT extend BaseActivity since it doesn't need the navigation drawer
-class LoginActivity : AppCompatActivity() {
+class LoginActivity : BaseActivityWithBack() {
+
+    override fun getLayoutResourceId(): Int = R.layout.activity_login
+    override fun getScreenTitle(): String = "Login"
 
     private lateinit var auth: FirebaseAuth
     private lateinit var binding: ActivityLoginBinding

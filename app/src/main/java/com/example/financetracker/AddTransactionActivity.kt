@@ -44,6 +44,7 @@ class AddTransactionActivity : AppCompatActivity() {
         // Set up category spinner
         val categorySpinner = findViewById<Spinner>(R.id.transactionCategorySpinner)
 
+
         // Initialize categories when activity starts
         lifecycleScope.launch {
             try {

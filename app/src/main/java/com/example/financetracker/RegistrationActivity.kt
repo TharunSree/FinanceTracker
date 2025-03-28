@@ -1,18 +1,21 @@
 package com.example.financetracker
 
+import com.example.financetracker.activities.BaseActivityWithBack
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import com.example.financetracker.databinding.ActivityRegistrationBinding
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
 
 // RegistrationActivity should NOT extend BaseActivity
-class RegistrationActivity : AppCompatActivity() {
+class RegistrationActivity : BaseActivityWithBack() {
+    override fun getLayoutResourceId(): Int = R.layout.activity_registration
+    override fun getScreenTitle(): String = "Register"
+
 
     private lateinit var auth: FirebaseAuth
     private lateinit var binding: ActivityRegistrationBinding
