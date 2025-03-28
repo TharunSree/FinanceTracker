@@ -4,18 +4,15 @@ import com.example.financetracker.activities.BaseActivityWithBack
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
-import android.view.View
 import android.widget.Toast
 import com.example.financetracker.databinding.ActivityRegistrationBinding
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
 
-// RegistrationActivity should NOT extend BaseActivity
 class RegistrationActivity : BaseActivityWithBack() {
     override fun getLayoutResourceId(): Int = R.layout.activity_registration
     override fun getScreenTitle(): String = "Register"
-
 
     private lateinit var auth: FirebaseAuth
     private lateinit var binding: ActivityRegistrationBinding
@@ -26,93 +23,111 @@ class RegistrationActivity : BaseActivityWithBack() {
         binding = ActivityRegistrationBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Initialize Firebase Auth and Firestore
+        setupToolbar()
+        initializeFirebase()
+        setupClickListeners()
+    }
+
+    private fun setupToolbar() {
+        setSupportActionBar(binding.toolbar)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+    }
+
+    private fun initializeFirebase() {
         auth = FirebaseAuth.getInstance()
         firestore = FirebaseFirestore.getInstance()
+    }
 
-        binding.registerButton.setOnClickListener {
-            val name = binding.name.text.toString()
-            val age = binding.age.text.toString().toIntOrNull() ?: 0
-            val email = binding.email.text.toString()
-            val password = binding.password.text.toString()
-            val confirmPassword = binding.confirmPassword.text.toString()
+    private fun setupClickListeners() {
+        binding.registerButton.setOnClickListener { handleRegistration() }
+        binding.loginLink.setOnClickListener { finish() }
+    }
 
-            if (email.isEmpty() || password.isEmpty()) {
-                Toast.makeText(this, "Email and password are required", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
+    private fun handleRegistration() {
+        val name = binding.nameInput.text.toString()
+        val age = binding.ageInput.text.toString()
+        val email = binding.emailInput.text.toString()
+        val password = binding.passwordInput.text.toString()
+        val confirmPassword = binding.confirmPasswordInput.text.toString()
+
+        when {
+            name.isEmpty() -> binding.nameInput.error = "Name is required"
+            age.isEmpty() -> binding.ageInput.error = "Age is required"
+            email.isEmpty() -> binding.emailInput.error = "Email is required"
+            password.isEmpty() -> binding.passwordInput.error = "Password is required"
+            confirmPassword.isEmpty() -> binding.confirmPasswordInput.error = "Please confirm password"
+            password != confirmPassword -> {
+                binding.confirmPasswordInput.error = "Passwords do not match"
+                binding.passwordInput.error = "Passwords do not match"
             }
-
-            if (password != confirmPassword) {
-                Toast.makeText(this, "Passwords do not match", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
+            else -> {
+                showLoading(true)
+                register(name, age.toIntOrNull() ?: 0, email, password)
             }
-
-            register(name, age, email, password)
         }
     }
 
     private fun register(name: String, age: Int, email: String, password: String) {
-        // Show progress
-        binding.progressBar.visibility = View.VISIBLE
-
         auth.createUserWithEmailAndPassword(email, password)
             .addOnCompleteListener(this) { task ->
                 if (task.isSuccessful) {
-                    // Registration success, create user profile in Firestore
                     val user = auth.currentUser
                     if (user != null) {
-                        val userId = user.uid
-                        Log.d("RegistrationActivity", "Created user with ID: $userId")
-
-                        // Create user profile with explicit userId
-                        val userProfile = hashMapOf(
-                            "uid" to userId,
-                            "name" to name,
-                            "age" to age,
-                            "email" to email,
-                            "createdAt" to System.currentTimeMillis()
-                        )
-
-                        // Save to Firestore with userId as document ID
-                        firestore.collection("users").document(userId)
-                            .set(userProfile)
-                            .addOnSuccessListener {
-                                binding.progressBar.visibility = View.GONE
-                                Log.d("RegistrationActivity", "User profile created for ID: $userId")
-
-                                // Get current user to ensure it's still valid
-                                val currentUser = auth.currentUser
-                                if (currentUser != null) {
-                                    updateUI(currentUser)
-                                } else {
-                                    Log.e("RegistrationActivity", "User is null after profile creation")
-                                    Toast.makeText(this, "Error: User session invalid", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                            .addOnFailureListener { e ->
-                                binding.progressBar.visibility = View.GONE
-                                Log.e("RegistrationActivity", "Failed to create user profile", e)
-                                Toast.makeText(this, "Failed to create profile: ${e.message}", Toast.LENGTH_SHORT).show()
-                            }
+                        createUserProfile(user, name, age, email)
                     } else {
-                        binding.progressBar.visibility = View.GONE
-                        Log.e("RegistrationActivity", "User is null after createUserWithEmailAndPassword")
-                        Toast.makeText(this, "Error: Unable to create user", Toast.LENGTH_SHORT).show()
+                        showLoading(false)
+                        showError("Failed to create user profile")
                     }
                 } else {
-                    // If registration fails, display a message to the user
-                    binding.progressBar.visibility = View.GONE
-                    Log.e("RegistrationActivity", "createUserWithEmail:failure", task.exception)
-                    Toast.makeText(baseContext, "Registration failed: ${task.exception?.message}", Toast.LENGTH_SHORT).show()
+                    showLoading(false)
+                    showError(task.exception?.message ?: "Registration failed")
                 }
             }
     }
 
+    private fun createUserProfile(user: FirebaseUser, name: String, age: Int, email: String) {
+        val userProfile = hashMapOf(
+            "uid" to user.uid,
+            "name" to name,
+            "age" to age,
+            "email" to email,
+            "createdAt" to System.currentTimeMillis()
+        )
+
+        firestore.collection("users").document(user.uid)
+            .set(userProfile)
+            .addOnSuccessListener {
+                Log.d(TAG, "User profile created for ID: ${user.uid}")
+                updateUI(user)
+            }
+            .addOnFailureListener { e ->
+                showLoading(false)
+                showError("Failed to create profile: ${e.message}")
+            }
+    }
+
+    private fun showLoading(show: Boolean) {
+        binding.registerButton.isEnabled = !show
+        binding.loginLink.isEnabled = !show
+        if (show) {
+            Toast.makeText(this, "Please wait...", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showError(message: String) {
+        Log.e(TAG, message)
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
     private fun updateUI(user: FirebaseUser) {
-        // User is signed in, proceed to MainActivity
-        val intent = Intent(this, MainActivity::class.java)
-        intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+        }
         startActivity(intent)
         finish()
+    }
+
+    companion object {
+        private const val TAG = "RegistrationActivity"
     }
 }

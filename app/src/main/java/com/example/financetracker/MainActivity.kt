@@ -393,7 +393,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         // Set the current user's name in the navigation drawer
         updateNavHeader()
 
-        setContentView(R.layout.activity_main)
 
         // Initialize views
         statisticsCard = findViewById(R.id.statisticsCard)
