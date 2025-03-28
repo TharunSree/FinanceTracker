@@ -87,4 +87,11 @@
     <!-- Settings Tab Titles -->
     <string name="tab_general">General</string>
     <string name="tab_categories">Categories</string>
+
+    <string name="transaction_count_format">%d transactions</string>
+    <string name="view_detailed_statistics">View Detailed Statistics</string>
+    <string name="statistics_title">Transaction Statistics</string>
+    <string name="category_breakdown">Category Breakdown</string>
+    <string name="guest_mode_message">Guest Mode - Data will not be backed up to the cloud</string>
+    <string name="expand_collapse_description">Expand or collapse statistics</string>
 </resources>

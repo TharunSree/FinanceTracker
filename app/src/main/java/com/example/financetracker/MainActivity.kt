@@ -1,6 +1,8 @@
 package com.example.financetracker
 
 import android.Manifest
+import androidx.transition.TransitionManager
+import androidx.transition.AutoTransition
 import android.app.AlertDialog
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -46,11 +48,18 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.navigation.NavigationView
 import com.example.financetracker.databinding.ActivityMainBinding
 import android.view.View
+import android.widget.ImageView
+import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.app.NotificationCompat
+import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import com.example.financetracker.database.dao.TransactionDao
 import com.example.financetracker.utils.CategoryUtils
 import com.example.financetracker.utils.GuestUserManager
+import com.example.financetracker.viewmodel.TransactionStatistics
+import com.google.android.material.card.MaterialCardView
 import kotlinx.coroutines.flow.first
+import kotlin.math.abs
 
 class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetailsListener {
 
@@ -62,6 +71,10 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     private var currentMessageBody: String? = null
     private lateinit var binding: ActivityMainBinding
     private val TAG = "MainActivity"
+    private lateinit var statisticsCard: MaterialCardView
+    private lateinit var categoryStatsContainer: LinearLayout
+    private lateinit var expandCollapseIcon: ImageView
+    private var isExpanded = false
 
     private val transactionViewModel: TransactionViewModel by viewModels {
         val database = TransactionDatabase.getDatabase(this)
@@ -356,7 +369,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         setupStatisticsView()
         setupNotificationChannel()
         requestNotificationPermission()
-        setupStatisticsButton()
+        //setupStatisticsButton()
         setupObservers()
 
         // Handle intent extras for notifications
@@ -379,6 +392,110 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         }
         // Set the current user's name in the navigation drawer
         updateNavHeader()
+
+        setContentView(R.layout.activity_main)
+
+        // Initialize views
+        statisticsCard = findViewById(R.id.statisticsCard)
+        categoryStatsContainer = findViewById(R.id.categoryStatsContainer)
+        expandCollapseIcon = findViewById(R.id.expandCollapseIcon)
+
+        // Set initial collapsed height
+        setCollapsedHeight()
+
+        // Setup click listener for statistics card
+        statisticsCard.setOnClickListener {
+            toggleStatisticsExpansion()
+        }
+
+        // Initialize other views and setup
+        setupView()
+        setupStatisticsObserver()
+    }
+
+    private fun setCollapsedHeight() {
+        val constraintLayout = statisticsCard.parent as ConstraintLayout
+        val constraintSet = ConstraintSet()
+        constraintSet.clone(constraintLayout)
+        constraintSet.constrainPercentHeight(statisticsCard.id, 0.25f) // 2/8 of screen height
+        constraintSet.applyTo(constraintLayout)
+    }
+
+    private fun toggleStatisticsExpansion() {
+        isExpanded = !isExpanded
+
+        val constraintLayout = statisticsCard.parent as ConstraintLayout
+        val constraintSet = ConstraintSet()
+        constraintSet.clone(constraintLayout)
+
+        // Setup transition
+        val transition = AutoTransition().apply {
+            duration = 300
+            interpolator = FastOutSlowInInterpolator()
+        }
+
+        TransitionManager.beginDelayedTransition(constraintLayout, transition)
+
+        if (isExpanded) {
+            // Expand to 80% height
+            constraintSet.constrainPercentHeight(statisticsCard.id, 0.8f)
+            categoryStatsContainer.visibility = View.VISIBLE
+            expandCollapseIcon.animate().rotation(180f).duration = 300
+        } else {
+            // Collapse to 25% height (2/8)
+            constraintSet.constrainPercentHeight(statisticsCard.id, 0.25f)
+            categoryStatsContainer.visibility = View.GONE
+            expandCollapseIcon.animate().rotation(0f).duration = 300
+        }
+
+        constraintSet.applyTo(constraintLayout)
+    }
+
+    private fun setupStatisticsObserver() {
+        transactionViewModel.transactionStatistics.observe(this) { stats ->
+            updateStatistics(stats)
+        }
+    }
+
+    private fun updateStatistics(stats: TransactionStatistics) {
+        // Update general statistics
+        findViewById<TextView>(R.id.maxExpenseText).text =
+            getString(R.string.max_expense_format, stats.maxExpense)
+        findViewById<TextView>(R.id.minExpenseText).text =
+            getString(R.string.min_expense_format, stats.minExpense)
+
+        // Update category statistics
+        categoryStatsContainer.removeAllViews()
+
+        stats.categoryStats.forEach { (category, categoryStats) ->
+            val categoryView = layoutInflater.inflate(
+                R.layout.item_category_stats,
+                categoryStatsContainer,
+                false
+            ).apply {
+                findViewById<TextView>(R.id.categoryName).text = category
+                findViewById<TextView>(R.id.categoryMaxExpense).text =
+                    getString(R.string.amount_format, categoryStats.maxExpense)
+                findViewById<TextView>(R.id.categoryTotalExpense).text =
+                    getString(R.string.amount_format, categoryStats.totalExpense)
+                findViewById<TextView>(R.id.categoryTransactionCount).text =
+                    getString(R.string.transaction_count_format, categoryStats.transactionCount)
+            }
+            categoryStatsContainer.addView(categoryView)
+        }
+    }
+
+    private fun setupView() {
+        // Setup other views and listeners
+        transactionViewModel.transactions.observe(this) { transactions ->
+            findViewById<TextView>(R.id.noTransactionsMessage)?.visibility =
+                if (transactions.isEmpty()) View.VISIBLE else View.GONE
+        }
+
+        // Setup SMS test button
+        findViewById<Button>(R.id.testSmsButton).setOnClickListener {
+            // Your existing SMS test implementation
+        }
     }
 
     private fun setupDrawerToggle() {
@@ -575,12 +692,12 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         Log.d(TAG, "SMS receiver registered with action: ${Telephony.Sms.Intents.SMS_RECEIVED_ACTION}")
     }
 
-    private fun setupStatisticsButton() {
+    /*private fun setupStatisticsButton() {
         findViewById<Button>(R.id.statisticsButton).setOnClickListener {
             val intent = Intent(this, StatisticsActivity::class.java)
             startActivity(intent)
         }
-    }
+    }*/
 
     private fun setupObservers() {
         transactionViewModel.transactions.observe(this) { transactions ->
@@ -795,7 +912,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                     val matchingTransaction = transactions.find {
                         it.userId == transaction.userId &&
                                 it.amount == transaction.amount &&
-                                Math.abs(it.date - transaction.date) < 60000 && // Within 1 minute
+                                abs(it.date - transaction.date) < 60000 && // Within 1 minute
                                 it.name == transaction.name &&
                                 !it.documentId.isNullOrEmpty()
                     }
