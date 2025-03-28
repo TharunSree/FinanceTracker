@@ -12,7 +12,10 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.database.entity.Transaction
+import com.example.financetracker.utils.GuestUserManager
 import com.example.financetracker.utils.MessageExtractor
+import com.example.financetracker.viewmodel.TransactionViewModel
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.*
 
@@ -110,13 +113,16 @@ class SmsProcessingService : Service() {
                 val messageExtractor = MessageExtractor(this@SmsProcessingService)
                 val details = messageExtractor.extractTransactionDetails(messageBody)
 
-                // Update notification to show progress
                 updateProcessingNotification("Extracting transaction details...")
 
                 if (details != null) {
                     Log.d(TAG, "Extracted details: $details")
 
-                    // Check for existing transaction
+                    // Get current user ID
+                    val userId = FirebaseAuth.getInstance().currentUser?.uid
+                        ?: GuestUserManager.getGuestUserId(applicationContext)
+
+                    // Check for duplicates within a time window
                     val database = TransactionDatabase.getDatabase(this@SmsProcessingService)
                     val existingTransaction = database.transactionDao()
                         .getTransactionsInTimeRange(
@@ -125,7 +131,7 @@ class SmsProcessingService : Service() {
                         )
                         .firstOrNull { transaction ->
                             transaction.amount == details.amount &&
-                                    transaction.name.equals(details.merchant, ignoreCase = true)
+                                    transaction.merchant.equals(details.merchant, ignoreCase = true)
                         }
 
                     if (existingTransaction != null) {
@@ -135,24 +141,20 @@ class SmsProcessingService : Service() {
                     }
 
                     val transaction = Transaction(
-                        id = 0,
+                        id = 0, // Room will auto-generate
                         name = details.merchant.ifBlank { "Unknown Merchant" },
                         amount = details.amount,
                         date = details.date,
                         category = if (details.category == "Uncategorized") "" else details.category,
                         merchant = details.merchant,
-                        description = details.description
+                        description = details.description,
+                        userId = userId, // Add user ID
+                        documentId = "" // Will be set when synced to Firestore
                     )
 
-                    // Update notification
-                    updateProcessingNotification("Saving transaction...")
-
-                    // Save to Room database
-                    database.transactionDao().insertTransaction(transaction)
-                    Log.d(TAG, "Transaction successfully added to the Room database")
-
-                    // Save to Firestore if needed
-                    addTransactionToFirestore(transaction)
+                    // Use TransactionViewModel to handle the transaction
+                    val viewModel = TransactionViewModel(database, application)
+                    viewModel.addTransaction(transaction)
 
                     // Show appropriate notification
                     if (transaction.name == "Unknown Merchant" || transaction.category.isBlank()) {
@@ -162,7 +164,6 @@ class SmsProcessingService : Service() {
                     }
                 }
 
-                // Stop the service
                 stopSelf(startId)
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing message", e)

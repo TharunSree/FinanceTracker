@@ -275,61 +275,66 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
         // Add this to your MainActivity's onCreate() method
         findViewById<Button>(R.id.testSmsButton).setOnClickListener {
-            // Show toast for user feedback
-            Toast.makeText(this, "Testing SMS receiver...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Testing SMS processing with Gemini...", Toast.LENGTH_SHORT).show()
 
-            // Create debug notification
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val channel = NotificationChannel(
-                    "debug_channel",
-                    "Debug Information",
-                    NotificationManager.IMPORTANCE_LOW
-                )
-                notificationManager.createNotificationChannel(channel)
-            }
+            // Create test messages for different bank formats
+            val testMessages = listOf(
+                "Your account has been debited with Rs 1500.00 for Amazon payment on 28-03-2024. Transaction ID: HDFC12345.",
+                "INR 2,999.00 debited from A/c XX1234 at SWIGGY on 28-03-24",
+                "Rs.799.00 spent via Debit Card xx1234 at NETFLIX.COM on 28/03/2024"
+            )
 
-            // Show debug notification
-            val notification = NotificationCompat.Builder(this, "debug_channel")
-                .setSmallIcon(R.drawable.ic_notification)
-                .setContentTitle("SMS Debug")
-                .setContentText("Testing SMS receiver functionality")
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .build()
-
-            notificationManager.notify(System.currentTimeMillis().toInt(), notification)
-
-            // Run test
-            testSmsReceiver()
-
-            // Create a mock financial message for testing
-            val mockSender = "HDFCBK"
-            val mockMessage = "Your account has been debited with Rs 1500.00 for Amazon payment. Transaction ID: HDFC12345."
-
-            // Log details
-            Log.d("SMS_TEST", "Testing with mock message from $mockSender: $mockMessage")
-
-            // Try to process the mock message directly
-            val messageExtractor = MessageExtractor(this)
+            // Test each message
             lifecycleScope.launch {
                 try {
-                    val details = messageExtractor.extractTransactionDetails(mockMessage)
-                    if (details != null) {
-                        Log.d("SMS_TEST", "Successfully extracted details: $details")
-                        Toast.makeText(this@MainActivity,
-                            "Test successful! Found: Rs ${details.amount} from ${details.merchant}",
-                            Toast.LENGTH_LONG).show()
-                    } else {
-                        Log.d("SMS_TEST", "Failed to extract details from test message")
-                        Toast.makeText(this@MainActivity,
-                            "Test extraction failed - no details found",
-                            Toast.LENGTH_LONG).show()
+                    val messageExtractor = MessageExtractor(this@MainActivity)
+
+                    testMessages.forEachIndexed { index, message ->
+                        Log.d("SMS_TEST", "Testing message ${index + 1}: $message")
+
+                        // Extract details using Gemini
+                        val details = messageExtractor.extractTransactionDetails(message)
+
+                        if (details != null) {
+                            Log.d("SMS_TEST", "Successfully extracted details: $details")
+
+                            // Create notification to show results
+                            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+                            val notification = NotificationCompat.Builder(this@MainActivity, "debug_channel")
+                                .setSmallIcon(R.drawable.ic_notification)
+                                .setContentTitle("Gemini Test #${index + 1}")
+                                .setContentText("Amount: ₹${details.amount}, Merchant: ${details.merchant}")
+                                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                                .build()
+
+                            notificationManager.notify(System.currentTimeMillis().toInt() + index, notification)
+
+                            // Show results in UI
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Test ${index + 1} Success!\nAmount: ₹${details.amount}\nMerchant: ${details.merchant}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        } else {
+                            Log.e("SMS_TEST", "Failed to extract details from test message $index")
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Test ${index + 1} Failed - No details extracted",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+
+                        // Add delay between tests
+                        kotlinx.coroutines.delay(2000)
                     }
                 } catch (e: Exception) {
-                    Log.e("SMS_TEST", "Error in test extraction", e)
-                    Toast.makeText(this@MainActivity,
-                        "Error: ${e.message}",
-                        Toast.LENGTH_LONG).show()
+                    Log.e("SMS_TEST", "Error in test", e)
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Error during test: ${e.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
         }
@@ -845,28 +850,34 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     override fun onDetailsEntered(merchant: String, category: String, saveAsPattern: Boolean) {
         val userId = auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(applicationContext)
 
+        // Save merchant-category mapping
         transactionViewModel.saveMerchant(merchant, category, userId)
 
         currentTransaction?.let { transaction ->
-            // Critical fix: Preserve the original documentId if it exists
-            val existingDocId = transaction.documentId
-
             // Update transaction details
-            transaction.name = merchant
-            transaction.category = category
-            transaction.userId = userId  // Ensure userId is set
-
-            // Preserve the document ID!
-            if (existingDocId.isNotEmpty()) {
-                transaction.documentId = existingDocId
+            transaction.apply {
+                this.name = merchant
+                this.category = category
+                this.userId = userId
+                // Don't modify documentId here
             }
 
-            // Log the documentId state
-            Log.d(TAG, "Updating transaction with documentId: ${transaction.documentId}")
-
+            // Use viewModelScope to handle the update
             lifecycleScope.launch {
-                // ONLY use the ViewModel to update - the ViewModel will handle Firestore
-                transactionViewModel.updateTransaction(transaction)
+                try {
+                    Log.d(TAG, "Updating transaction: $transaction")
+                    // Use the ViewModel to update - it will handle both Room and Firestore
+                    transactionViewModel.updateTransaction(transaction)
+
+                    Toast.makeText(this@MainActivity,
+                        "Transaction details updated",
+                        Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error updating transaction", e)
+                    Toast.makeText(this@MainActivity,
+                        "Error updating transaction: ${e.message}",
+                        Toast.LENGTH_SHORT).show()
+                }
             }
         }
 
@@ -876,7 +887,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             }
         }
     }
-
     private fun updateTransactionInFirestore(transaction: Transaction) {
         val userId = auth.currentUser?.uid ?: return
 

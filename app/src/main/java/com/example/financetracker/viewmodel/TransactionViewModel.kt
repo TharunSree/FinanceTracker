@@ -175,28 +175,56 @@ class TransactionViewModel(
         try {
             isLocalUpdate = true
 
+            // Set userId if not already set
             if (transaction.userId.isNullOrEmpty()) {
                 transaction.userId = getUserId(getApplication())
             }
 
+            // Check for duplicate before inserting
+            val existingTransaction = checkForDuplicate(transaction)
+            if (existingTransaction != null) {
+                Log.d("TransactionViewModel", "Duplicate transaction detected, skipping: ${transaction.name}")
+                return@launch
+            }
+
+            // Insert into local database
             val insertedId = transactionDao.insertTransactionAndGetId(transaction)
 
             if (transaction.id == 0) {
                 transaction.id = insertedId
             }
 
+            // Sync to Firestore if not in guest mode
             if (!GuestUserManager.isGuestMode(transaction.userId)) {
                 syncTransactionToFirestore(transaction)
             }
 
-            // Refresh both filtered lists
+            // Refresh data
             loadAllTransactions()
             updateStatistics()
+
+            // Reset local update flag after a delay to ensure Firestore sync completes
+            kotlinx.coroutines.delay(1000)
             isLocalUpdate = false
         } catch (e: Exception) {
             Log.e("TransactionViewModel", "Error adding transaction", e)
             isLocalUpdate = false
         }
+    }
+
+    // Add this helper method to check for duplicates
+    private suspend fun checkForDuplicate(transaction: Transaction): Transaction? {
+        val timeWindow = 60000L // 1 minute window to check for duplicates
+        val startTime = transaction.date - timeWindow
+        val endTime = transaction.date + timeWindow
+
+        return transactionDao.getTransactionsByDateRange(startTime, endTime)
+            .firstOrNull { existingTransaction ->
+                existingTransaction.amount == transaction.amount &&
+                        existingTransaction.name == transaction.name &&
+                        existingTransaction.merchant == transaction.merchant &&
+                        existingTransaction.category == transaction.category
+            }
     }
 
     // Method to delete a transaction

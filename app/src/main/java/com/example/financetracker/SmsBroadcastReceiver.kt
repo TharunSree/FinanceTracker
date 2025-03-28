@@ -54,11 +54,6 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
             return
         }
 
-        // Create a debug notification to confirm receiver is working
-        debugNotification(context, "SMS Receiver triggered: ${intent.action}")
-        Log.d(TAG, "SMS BroadcastReceiver activated with action: ${intent.action}")
-        isInitialized = true
-
         if (intent.action == Telephony.Sms.Intents.SMS_RECEIVED_ACTION) {
             val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
 
@@ -67,16 +62,11 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
                 val messageBody = smsMessage.messageBody
 
                 Log.d(TAG, "SMS from: $sender")
-                Log.d(TAG, "Message body: $messageBody")
-
-                // Always create a notification with basic SMS info for debugging
-                debugNotification(context, "SMS from $sender: ${messageBody.take(20)}...")
 
                 if (isFinancialMessage(sender, messageBody)) {
                     Log.d(TAG, "Financial message detected from sender: $sender")
-                    createNotificationChannels(context)
 
-                    // Start a foreground service to process the message reliably
+                    // Start the processing service
                     val serviceIntent = Intent(context, SmsProcessingService::class.java).apply {
                         putExtra("sender", sender)
                         putExtra("message", messageBody)
@@ -87,15 +77,8 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
                     } else {
                         context.startService(serviceIntent)
                     }
-
-                    // Also try processing directly as a backup
-                    processMessage(context, messageBody)
-                } else {
-                    Log.d(TAG, "Not a financial message from: $sender")
                 }
             }
-        } else {
-            Log.d(TAG, "Ignoring non-SMS intent: ${intent.action}")
         }
     }
 
@@ -308,28 +291,11 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
     }
 
     private fun isFinancialMessage(sender: String, message: String): Boolean {
-        // Add explicit debit/credit keywords
-        val debitKeywords = listOf(
-            "debited",
-            "debit",
-            "spent",
-            "paid",
-            "withdrawn",
-            "purchase",
-            "payment"
-        )
+        val bankKeywords = listOf("HDFCBK", "ICICI", "SBIINB", "AXISBK", "KOTAKB",
+            "HDFCBANK", "ICICIBK", "SBIBANK", "AXISBANK", "KOTAK")
 
-        // Check if message contains amount pattern AND debit keywords
-        val hasAmount = currencyPatterns.values.flatten().any { pattern ->
-            pattern.find(message) != null
-        }
-
-        val isDebitTransaction = debitKeywords.any { keyword ->
-            message.contains(keyword, ignoreCase = true)
-        }
-
-        // Only process messages that have both amount and debit-related keywords
-        return (senderMatches(sender) || hasAmount) && isDebitTransaction
+        return bankKeywords.any { sender.contains(it, ignoreCase = true) } &&
+                message.contains(Regex("(?i)(debit|credit|spent|payment|transaction|transferred|paid)"))
     }
 
     private fun senderMatches(sender: String): Boolean {
