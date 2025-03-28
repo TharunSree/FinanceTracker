@@ -17,6 +17,7 @@ import java.util.Calendar
 import android.app.Application
 import com.example.financetracker.database.entity.Merchant
 import com.example.financetracker.repository.TransactionRepository
+import kotlinx.coroutines.tasks.await
 
 data class CategoryStatistics(
     val maxExpense: Double,
@@ -37,6 +38,7 @@ class TransactionViewModel(
 ) : AndroidViewModel(application) {
 
     private val transactionDao = database.transactionDao()
+    private val TAG = "TransactionViewModel"
     private val repository: TransactionRepository
     init {
         val database = TransactionDatabase.getDatabase(application)
@@ -173,42 +175,28 @@ class TransactionViewModel(
     // Method to add a transaction
     fun addTransaction(transaction: Transaction) = viewModelScope.launch {
         try {
-            isLocalUpdate = true
-
-            // Set userId if not already set
+            // Ensure transaction has a user ID
             if (transaction.userId.isNullOrEmpty()) {
                 transaction.userId = getUserId(getApplication())
             }
 
-            // Check for duplicate before inserting
-            val existingTransaction = checkForDuplicate(transaction)
-            if (existingTransaction != null) {
-                Log.d("TransactionViewModel", "Duplicate transaction detected, skipping: ${transaction.name}")
-                return@launch
-            }
-
-            // Insert into local database
-            val insertedId = transactionDao.insertTransactionAndGetId(transaction)
-
-            if (transaction.id == 0) {
-                transaction.id = insertedId
-            }
+            // Insert into Room and get the generated ID
+            val id = database.transactionDao().insertTransactionAndGetId(transaction)
+            transaction.id = id.toInt()
 
             // Sync to Firestore if not in guest mode
             if (!GuestUserManager.isGuestMode(transaction.userId)) {
-                syncTransactionToFirestore(transaction)
+                val documentId = createFirestoreDocument(transaction)
+                transaction.documentId = documentId
+
+                // Update Room with the document ID
+                database.transactionDao().updateTransaction(transaction)
             }
 
-            // Refresh data
+            // Reload transactions to refresh the UI
             loadAllTransactions()
-            updateStatistics()
-
-            // Reset local update flag after a delay to ensure Firestore sync completes
-            kotlinx.coroutines.delay(1000)
-            isLocalUpdate = false
         } catch (e: Exception) {
-            Log.e("TransactionViewModel", "Error adding transaction", e)
-            isLocalUpdate = false
+            Log.e(TAG, "Error adding transaction", e)
         }
     }
 
@@ -227,44 +215,91 @@ class TransactionViewModel(
             }
     }
 
-    // Method to delete a transaction
-    fun deleteTransaction(transaction: Transaction) = viewModelScope.launch {
-        transactionDao.deleteTransaction(transaction)
-
-        // Delete from Firestore
-        val uid = userId ?: return@launch
-
-        // Use documentId if available, otherwise use ID
-        val docId = if (transaction.documentId.isNotEmpty()) {
-            transaction.documentId
-        } else {
-            transaction.id.toString()
-        }
-
-        firestore.collection("users").document(uid)
-            .collection("transactions")
-            .document(docId)
-            .delete()
-
-        updateStatistics()
-    }
-
     // Method to update a transaction
     fun updateTransaction(transaction: Transaction) = viewModelScope.launch {
-        // 1. Ensure transaction has userId (either authenticated or guest)
-        if (transaction.userId.isNullOrEmpty()) {
-            transaction.userId = getUserId(getApplication())
+        try {
+            // Update in Room
+            database.transactionDao().updateTransaction(transaction)
+
+            // Update in Firestore if not guest mode
+            val userId = transaction.userId
+            if (!GuestUserManager.isGuestMode(userId)) {
+                val documentId = transaction.documentId.takeIf { it.isNotEmpty() } ?:
+                createFirestoreDocument(transaction)
+
+                transaction.documentId = documentId
+                updateFirestoreTransaction(transaction)
+            }
+
+            // Reload transactions to refresh the UI
+            loadAllTransactions()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating transaction", e)
         }
-
-        // 2. Update in local database
-        transactionDao.updateTransaction(transaction)
-
-        // 3. Sync with Firestore only for authenticated users
-        syncTransactionToFirestore(transaction)
-
-        // 4. Update statistics
-        updateStatistics()
     }
+
+    private suspend fun createFirestoreDocument(transaction: Transaction): String {
+        return try {
+            val userId = transaction.userId ?: throw IllegalStateException("User ID is required")
+
+            val docRef = FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(userId)
+                .collection("transactions")
+                .document()
+
+            val transactionMap = hashMapOf(
+                "id" to transaction.id,
+                "name" to transaction.name,
+                "amount" to transaction.amount,
+                "date" to transaction.date,
+                "category" to transaction.category,
+                "merchant" to transaction.merchant,
+                "description" to transaction.description,
+                "userId" to userId,
+                "documentId" to docRef.id
+            )
+
+            docRef.set(transactionMap).await()
+            docRef.id
+        } catch (e: Exception) {
+            Log.e(TAG, "Error creating Firestore document", e)
+            throw e
+        }
+    }
+
+    private suspend fun updateFirestoreTransaction(transaction: Transaction) {
+        try {
+            val userId = transaction.userId ?: return
+            val documentId = transaction.documentId ?: return
+
+            val transactionMap = hashMapOf(
+                "id" to transaction.id,
+                "name" to transaction.name,
+                "amount" to transaction.amount,
+                "date" to transaction.date,
+                "category" to transaction.category,
+                "merchant" to transaction.merchant,
+                "description" to transaction.description,
+                "userId" to userId,
+                "documentId" to documentId
+            )
+
+            FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(userId)
+                .collection("transactions")
+                .document(documentId)
+                .set(transactionMap)
+                .await()
+
+            Log.d(TAG, "Transaction updated in Firestore: $documentId")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating transaction in Firestore", e)
+            throw e
+        }
+    }
+
 
     fun syncWithFirestore() = viewModelScope.launch {
         repository.loadFromFirestore()

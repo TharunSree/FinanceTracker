@@ -11,175 +11,93 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <LinearLayout
+        <com.google.android.material.appbar.AppBarLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical">
+            android:layout_height="wrap_content">
 
-            <androidx.appcompat.widget.Toolbar
+            <com.google.android.material.appbar.MaterialToolbar
                 android:id="@+id/toolbar"
                 android:layout_width="match_parent"
                 android:layout_height="?attr/actionBarSize"
-                android:background="?attr/colorPrimary"
-                android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar" />
+                android:background="?attr/colorSurface"
+                android:elevation="0dp"
+                app:titleTextColor="?attr/colorOnSurface" />
 
-            <!-- Guest Mode Banner -->
-            <TextView
-                android:id="@+id/guestModeBanner"
+        </com.google.android.material.appbar.AppBarLayout>
+
+        <androidx.core.widget.NestedScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="#FFC107"
-                android:gravity="center"
-                android:padding="8dp"
-                android:text="Guest Mode - Data will not be backed up to the cloud"
-                android:textColor="#000000"
-                android:textSize="14sp"
-                android:visibility="gone" />
+                android:orientation="vertical">
 
-            <!-- Main Content Container -->
-            <androidx.core.widget.NestedScrollView
-                android:layout_width="match_parent"
-                android:layout_height="match_parent">
-
-                <LinearLayout
+                <!-- Guest Mode Banner -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/guestModeBanner"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical">
+                    android:layout_margin="8dp"
+                    android:visibility="gone"
+                    app:cardBackgroundColor="@color/warning_container"
+                    app:cardElevation="0dp">
 
-                    <!-- Statistics Container with Constraints -->
-                    <androidx.constraintlayout.widget.ConstraintLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="0dp"
-                        android:layout_weight="4"
-                        android:paddingBottom="8dp">
-
-                        <!-- Statistics Card -->
-                        <com.google.android.material.card.MaterialCardView
-                            android:id="@+id/statisticsCard"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_margin="18dp"
-                            android:layout_marginBottom="12dp"
-                            android:clickable="true"
-                            android:focusable="true"
-                            app:cardCornerRadius="8dp"
-                            app:cardElevation="4dp"
-                            app:layout_constraintEnd_toEndOf="parent"
-                            app:layout_constraintStart_toStartOf="parent"
-                            app:layout_constraintTop_toTopOf="parent"
-                            app:layout_constraintBottom_toBottomOf="parent"
-                            app:layout_constraintWidth_percent="0.875">
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:orientation="vertical"
-
-                                android:padding="16dp">
-
-                                <!-- Header with Title and Expand Icon -->
-                                <LinearLayout
-                                    android:layout_width="match_parent"
-                                    android:layout_height="wrap_content"
-                                    android:gravity="center_vertical"
-                                    android:orientation="horizontal">
-
-                                    <TextView
-                                        android:layout_width="0dp"
-                                        android:layout_height="wrap_content"
-                                        android:layout_weight="1"
-                                        android:text="Transaction Statistics"
-                                        android:textAppearance="?attr/textAppearanceHeadline6"
-                                        android:textStyle="bold" />
-
-                                    <ImageView
-                                        android:id="@+id/expandCollapseIcon"
-                                        android:layout_width="24dp"
-                                        android:layout_height="24dp"
-                                        android:contentDescription="Expand/Collapse"
-                                        android:src="@drawable/ic_expand_more" />
-                                </LinearLayout>
-
-                                <!-- Overall Statistics -->
-                                <LinearLayout
-                                    android:layout_width="match_parent"
-                                    android:layout_height="wrap_content"
-                                    android:layout_marginTop="16dp"
-                                    android:orientation="vertical">
-
-                                    <TextView
-                                        android:id="@+id/maxExpenseText"
-                                        android:layout_width="match_parent"
-                                        android:layout_height="wrap_content"
-                                        android:text="Max Expense: ₹0.00"
-                                        android:textAppearance="?attr/textAppearanceBody1" />
-
-                                    <TextView
-                                        android:id="@+id/minExpenseText"
-                                        android:layout_width="match_parent"
-                                        android:layout_height="wrap_content"
-                                        android:layout_marginTop="8dp"
-                                        android:text="Min Expense: ₹0.00"
-                                        android:textAppearance="?attr/textAppearanceBody1" />
-                                </LinearLayout>
-
-                                <!-- Category Statistics (Initially Hidden) -->
-                                <LinearLayout
-                                    android:id="@+id/categoryStatsContainer"
-                                    android:layout_width="match_parent"
-                                    android:layout_height="wrap_content"
-                                    android:layout_marginTop="16dp"
-                                    android:orientation="vertical"
-                                    android:visibility="gone">
-
-                                    <TextView
-                                        android:layout_width="match_parent"
-                                        android:layout_height="wrap_content"
-                                        android:text="Category Breakdown"
-                                        android:textAppearance="?attr/textAppearanceSubtitle1"
-                                        android:textStyle="bold" />
-                                </LinearLayout>
-                            </LinearLayout>
-                        </com.google.android.material.card.MaterialCardView>
-                    </androidx.constraintlayout.widget.ConstraintLayout>
-
-                    <!-- No Transactions Message -->
                     <TextView
-                        android:id="@+id/noTransactionsMessage"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:gravity="center"
-                        android:padding="32dp"
-                        android:text="No transactions yet"
-                        android:textSize="16sp"
-                        android:visibility="gone" />
-
-                    <!-- Test SMS Button -->
-                    <Button
-                        android:id="@+id/testSmsButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="center"
-                        android:layout_marginTop="16dp"
-                        android:text="Test SMS Detection"
-                        android:layout_marginVertical="20dp"
-                        android:backgroundTint="@color/colorAccent"
-                        android:textColor="@android:color/white"
                         android:padding="12dp"
-                        android:elevation="4dp" />
-                </LinearLayout>
-            </androidx.core.widget.NestedScrollView>
-        </LinearLayout>
+                        android:text="Guest Mode - Data will not be backed up to the cloud"
+                        android:textColor="@color/on_warning_container"
+                        android:textSize="14sp" />
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Statistics Section -->
+                <androidx.compose.ui.platform.ComposeView
+                    android:id="@+id/statistics_compose_view"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_margin="16dp" />
+
+                <!-- No Transactions Message -->
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/noTransactionsMessage"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:padding="32dp"
+                    android:text="No transactions yet"
+                    android:textAppearance="?attr/textAppearanceBodyLarge"
+                    android:visibility="gone" />
+
+                <!-- Test SMS Button -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/testSmsButton"
+                    style="@style/Widget.Material3.Button.ElevatedButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:layout_margin="16dp"
+                    android:text="Test SMS Detection"
+                    app:icon="@drawable/ic_message" />
+
+            </LinearLayout>
+
+        </androidx.core.widget.NestedScrollView>
 
         <!-- Add Transaction FAB -->
-        <com.google.android.material.floatingactionbutton.FloatingActionButton
+        <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
             android:id="@+id/addTransactionButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom|end"
             android:layout_margin="16dp"
-            android:contentDescription="Add Transaction"
-            app:srcCompat="@drawable/ic_add" />
+            android:text="Add Transaction"
+            app:icon="@drawable/ic_add" />
 
     </androidx.coordinatorlayout.widget.CoordinatorLayout>
 
@@ -189,7 +107,10 @@
         android:layout_width="wrap_content"
         android:layout_height="match_parent"
         android:layout_gravity="start"
+        android:background="?attr/colorSurface"
         app:headerLayout="@layout/nav_header"
+        app:itemIconTint="@color/navigation_item_color"
+        app:itemTextColor="@color/navigation_item_color"
         app:menu="@menu/nav_menu" />
 
 </androidx.drawerlayout.widget.DrawerLayout>

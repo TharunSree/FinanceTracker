@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.kapt)
+    id("com.google.devtools.ksp")
     alias(libs.plugins.androidx.room)
     alias(libs.plugins.google.services)
     alias(libs.plugins.kotlin.serialization)
@@ -16,7 +17,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.financetracker"
-        minSdk = 24
+        minSdk = 27
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -69,7 +70,8 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     implementation(libs.junit.junit)
     implementation(libs.material)
-    kapt(libs.androidx.room.compiler)
+    ksp(libs.androidx.room.compiler)
+    implementation(libs.github.madrapps)
     implementation(libs.androidx.preference)
     implementation(libs.google.gemini)
     implementation(libs.androidx.databinding)

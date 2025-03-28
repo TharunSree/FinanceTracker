@@ -62,11 +62,13 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
                 val messageBody = smsMessage.messageBody
 
                 Log.d(TAG, "SMS from: $sender")
+                Log.d(TAG, "Message body: $messageBody")
 
                 if (isFinancialMessage(sender, messageBody)) {
                     Log.d(TAG, "Financial message detected from sender: $sender")
+                    createNotificationChannels(context)
 
-                    // Start the processing service
+                    // Only start the service, remove direct processing
                     val serviceIntent = Intent(context, SmsProcessingService::class.java).apply {
                         putExtra("sender", sender)
                         putExtra("message", messageBody)
@@ -77,6 +79,8 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
                     } else {
                         context.startService(serviceIntent)
                     }
+                } else {
+                    Log.d(TAG, "Not a financial message from: $sender")
                 }
             }
         }
@@ -291,21 +295,74 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
     }
 
     private fun isFinancialMessage(sender: String, message: String): Boolean {
-        val bankKeywords = listOf("HDFCBK", "ICICI", "SBIINB", "AXISBK", "KOTAKB",
-            "HDFCBANK", "ICICIBK", "SBIBANK", "AXISBANK", "KOTAK")
+        // First check if the sender is a known financial sender
+        if (senderMatches(sender)) {
+            Log.d(TAG, "Sender matched: $sender")
+            return true
+        }
 
-        return bankKeywords.any { sender.contains(it, ignoreCase = true) } &&
-                message.contains(Regex("(?i)(debit|credit|spent|payment|transaction|transferred|paid)"))
+        // Add explicit debit/credit keywords
+        val debitKeywords = listOf(
+            "debited",
+            "debit",
+            "spent",
+            "paid",
+            "withdrawn",
+            "purchase",
+            "payment",
+            "transferred",
+            "transaction"
+        )
+
+        // Check if message contains amount pattern AND debit keywords
+        val hasAmount = currencyPatterns.values.flatten().any { pattern ->
+            val matches = pattern.find(message) != null
+            if (matches) {
+                Log.d(TAG, "Found amount pattern in message")
+            }
+            matches
+        }
+
+        val isDebitTransaction = debitKeywords.any { keyword ->
+            val matches = message.contains(keyword, ignoreCase = true)
+            if (matches) {
+                Log.d(TAG, "Found debit keyword: $keyword")
+            }
+            matches
+        }
+
+        val isFinancial = hasAmount && isDebitTransaction
+        Log.d(TAG, "Message financial check: hasAmount=$hasAmount, isDebitTransaction=$isDebitTransaction, result=$isFinancial")
+        return isFinancial
     }
 
     private fun senderMatches(sender: String): Boolean {
         val financialSenders = listOf(
+            // Main bank senders
             "SBIUPI", "SBI", "SBIPSG", "HDFCBK", "ICICI", "AXISBK", "PAYTM",
             "GPAY", "PHONEPE", "-SBIINB", "-HDFCBK", "-ICICI", "-AXISBK",
             "CENTBK", "BOIIND", "PNBSMS", "CANBNK", "UNIONB",
-            "KOTAKB", "INDUSB", "YESBNK"
+            "KOTAKB", "INDUSB", "YESBNK",
+
+            // Additional variations
+            "HDFCBANK", "ICICIBK", "SBIBANK", "AXISBANK", "KOTAK",
+            "SBI-UPI", "HDFC-UPI", "ICICI-UPI", "AXIS-UPI",
+            "VK-HDFCBK", "VM-HDFCBK", "VK-ICICI", "VM-ICICI",
+            "VK-SBIINB", "VM-SBIINB", "BZ-HDFCBK", "BZ-ICICI",
+
+            // UPI services
+            "UPIBNK", "UPIPAY", "BHIMPAY", "RAZORPAY",
+
+            // Common variations with different prefixes
+            "AD-", "TM-", "DM-", "BZ-", "VM-", "VK-"
         )
 
-        return financialSenders.any { it.equals(sender, ignoreCase = true) }
+        val matched = financialSenders.any {
+            sender.contains(it, ignoreCase = true) ||
+                    it.startsWith(sender, ignoreCase = true)
+        }
+
+        Log.d(TAG, "Sender check: $sender -> $matched")
+        return matched
     }
 }

@@ -49,13 +49,18 @@ import com.google.android.material.navigation.NavigationView
 import com.example.financetracker.databinding.ActivityMainBinding
 import android.view.View
 import android.widget.ImageView
+import androidx.activity.compose.setContent
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.app.NotificationCompat
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import com.example.financetracker.database.dao.TransactionDao
+import com.example.financetracker.ui.screens.StatisticsScreen
 import com.example.financetracker.utils.CategoryUtils
 import com.example.financetracker.utils.GuestUserManager
+import com.example.financetracker.viewmodel.StatisticsViewModel
 import com.example.financetracker.viewmodel.TransactionStatistics
 import com.google.android.material.card.MaterialCardView
 import kotlinx.coroutines.flow.first
@@ -65,6 +70,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
     override fun getLayoutResourceId(): Int = R.layout.activity_main
 
+    private val statisticsViewModel: StatisticsViewModel by viewModels()
     private lateinit var smsBroadcastReceiver: SmsBroadcastReceiver
     private lateinit var messageExtractor: MessageExtractor
     private var currentTransaction: Transaction? = null
@@ -106,9 +112,11 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         )
     }
 
-    private fun updateGuestModeBanner(isGuestMode: Boolean) {
-        val guestBanner = findViewById<TextView>(R.id.guestModeBanner)
-        guestBanner?.visibility = if (isGuestMode) View.VISIBLE else View.GONE
+    private fun updateGuestModeBanner() {
+        val guestModeBanner = binding.guestModeBanner
+        val isGuestMode = GuestUserManager.isGuestMode(this)
+
+        guestModeBanner.visibility = if (isGuestMode) View.VISIBLE else View.GONE
     }
 
     private val requestPermissionsLauncher =
@@ -269,6 +277,8 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        setupComposeStatistics()
+
         CategoryUtils.initializeCategories(this)
 
         debugCategories()
@@ -365,7 +375,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         val isGuestMode = GuestUserManager.isGuestMode(userId)
 
         // Update UI for guest mode
-        updateGuestModeBanner(isGuestMode)
+        updateGuestModeBanner()
 
         transactionViewModel.startListeningToTransactions(userId)
 
@@ -415,6 +425,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         // Initialize other views and setup
         setupView()
         setupStatisticsObserver()
+        intent?.let { handleIntentExtras(it) }
     }
 
     private fun setCollapsedHeight() {
@@ -423,6 +434,17 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         constraintSet.clone(constraintLayout)
         constraintSet.constrainPercentHeight(statisticsCard.id, 0.25f) // 2/8 of screen height
         constraintSet.applyTo(constraintLayout)
+    }
+
+    private fun setupComposeStatistics() {
+        binding.statisticsComposeView.apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                MaterialTheme {
+                    StatisticsScreen(statisticsViewModel)
+                }
+            }
+        }
     }
 
     private fun toggleStatisticsExpansion() {
@@ -848,45 +870,48 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     }
 
     override fun onDetailsEntered(merchant: String, category: String, saveAsPattern: Boolean) {
-        val userId = auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(applicationContext)
+        lifecycleScope.launch {
+            try {
+                val userId = auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(applicationContext)
 
-        // Save merchant-category mapping
-        transactionViewModel.saveMerchant(merchant, category, userId)
+                // Save merchant-category mapping first
+                transactionViewModel.saveMerchant(merchant, category, userId)
 
-        currentTransaction?.let { transaction ->
-            // Update transaction details
-            transaction.apply {
-                this.name = merchant
-                this.category = category
-                this.userId = userId
-                // Don't modify documentId here
-            }
+                currentTransaction?.let { transaction ->
+                    // Update transaction details
+                    transaction.apply {
+                        this.name = merchant
+                        this.category = category
+                        this.userId = userId
+                    }
 
-            // Use viewModelScope to handle the update
-            lifecycleScope.launch {
-                try {
                     Log.d(TAG, "Updating transaction: $transaction")
-                    // Use the ViewModel to update - it will handle both Room and Firestore
+
+                    // Update in Room and Firestore via ViewModel
                     transactionViewModel.updateTransaction(transaction)
 
+                    // Force refresh the transaction list
+                    transactionViewModel.loadAllTransactions()
+
                     Toast.makeText(this@MainActivity,
-                        "Transaction details updated",
-                        Toast.LENGTH_SHORT).show()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error updating transaction", e)
-                    Toast.makeText(this@MainActivity,
-                        "Error updating transaction: ${e.message}",
+                        "Transaction updated successfully",
                         Toast.LENGTH_SHORT).show()
                 }
-            }
-        }
 
-        if (saveAsPattern) {
-            currentMessageBody?.let { messageBody ->
-                saveTransactionPattern(messageBody, merchant, category)
+                if (saveAsPattern) {
+                    currentMessageBody?.let { messageBody ->
+                        saveTransactionPattern(messageBody, merchant, category)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating transaction", e)
+                Toast.makeText(this@MainActivity,
+                    "Error updating transaction: ${e.message}",
+                    Toast.LENGTH_SHORT).show()
             }
         }
     }
+
     private fun updateTransactionInFirestore(transaction: Transaction) {
         val userId = auth.currentUser?.uid ?: return
 
