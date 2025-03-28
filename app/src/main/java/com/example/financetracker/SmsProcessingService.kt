@@ -118,20 +118,21 @@ class SmsProcessingService : Service() {
                 if (details != null) {
                     Log.d(TAG, "Extracted details: $details")
 
-                    // Get current user ID
+                    // Get user ID
                     val userId = FirebaseAuth.getInstance().currentUser?.uid
                         ?: GuestUserManager.getGuestUserId(applicationContext)
 
-                    // Check for duplicates within a time window
+                    // Check for duplicates
                     val database = TransactionDatabase.getDatabase(this@SmsProcessingService)
                     val existingTransaction = database.transactionDao()
                         .getTransactionsInTimeRange(
-                            details.date - 60000, // 1 minute before
-                            details.date + 60000  // 1 minute after
+                            details.date - 60000,
+                            details.date + 60000
                         )
                         .firstOrNull { transaction ->
                             transaction.amount == details.amount &&
-                                    transaction.merchant.equals(details.merchant, ignoreCase = true)
+                                    transaction.userId == userId &&
+                                    transaction.name.equals(details.merchant, ignoreCase = true)
                         }
 
                     if (existingTransaction != null) {
@@ -141,7 +142,7 @@ class SmsProcessingService : Service() {
                     }
 
                     val transaction = Transaction(
-                        id = 0, // Room will auto-generate
+                        id = 0,
                         name = details.merchant.ifBlank { "Unknown Merchant" },
                         amount = details.amount,
                         date = details.date,
@@ -149,12 +150,20 @@ class SmsProcessingService : Service() {
                         merchant = details.merchant,
                         description = details.description,
                         userId = userId, // Add user ID
-                        documentId = "" // Will be set when synced to Firestore
+                        documentId = ""  // Will be set when added to Firestore
                     )
 
-                    // Use TransactionViewModel to handle the transaction
-                    val viewModel = TransactionViewModel(database, application)
-                    viewModel.addTransaction(transaction)
+                    // Update notification
+                    updateProcessingNotification("Saving transaction...")
+
+                    // Save to Room database
+                    database.transactionDao().insertTransaction(transaction)
+                    Log.d(TAG, "Transaction successfully added to the Room database")
+
+                    // Save to Firestore if not a guest user
+                    if (!GuestUserManager.isGuestMode(userId)) {
+                        addTransactionToFirestore(transaction)
+                    }
 
                     // Show appropriate notification
                     if (transaction.name == "Unknown Merchant" || transaction.category.isBlank()) {
@@ -189,14 +198,62 @@ class SmsProcessingService : Service() {
     }
 
     private fun addTransactionToFirestore(transaction: Transaction) {
-        firestore.collection("transactions")
-            .add(transaction)
+        // Get userId (either authenticated or guest)
+        val userId = FirebaseAuth.getInstance().currentUser?.uid
+            ?: GuestUserManager.getGuestUserId(applicationContext)
+
+        // Skip for guest users
+        if (GuestUserManager.isGuestMode(userId)) {
+            return
+        }
+
+        // Set the userId in the transaction
+        transaction.userId = userId
+
+        // Create a document reference with a new ID
+        val docRef = firestore.collection("users")
+            .document(userId)
+            .collection("transactions")
+            .document()
+
+        // Set the document ID in the transaction
+        transaction.documentId = docRef.id
+
+        // Create the transaction map
+        val transactionMap = hashMapOf(
+            "id" to transaction.id,
+            "name" to transaction.name,
+            "amount" to transaction.amount,
+            "date" to transaction.date,
+            "category" to transaction.category,
+            "merchant" to transaction.merchant,
+            "description" to transaction.description,
+            "documentId" to transaction.documentId,
+            "userId" to userId
+        )
+
+        // Save to Firestore
+        docRef.set(transactionMap)
             .addOnSuccessListener {
                 Log.d(TAG, "Transaction successfully added to Firestore")
+                // Update the Room database with the document ID
+                updateTransactionInRoom(transaction)
             }
             .addOnFailureListener { e ->
                 Log.e(TAG, "Error adding transaction to Firestore: ${e.message}")
             }
+    }
+
+    private fun updateTransactionInRoom(transaction: Transaction) {
+        coroutineScope.launch {
+            try {
+                val database = TransactionDatabase.getDatabase(applicationContext)
+                database.transactionDao().updateTransaction(transaction)
+                Log.d(TAG, "Updated transaction in Room with documentId: ${transaction.documentId}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating transaction in Room", e)
+            }
+        }
     }
 
     private fun showDetailsNeededNotification(transaction: Transaction, message: String) {

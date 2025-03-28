@@ -53,6 +53,8 @@ class GeminiMessageExtractor(private val context: Context, private val apiKey: S
                 Return ONLY the JSON, nothing else.
             """.trimIndent()
 
+            Log.d(TAG, "Using prompt: $prompt")
+
             // Call Gemini API - using the string-based prompt with timeout
             val response = withContext(Dispatchers.IO) {
                 try {
