@@ -105,6 +105,8 @@ class LoginActivity : BaseActivityWithBack() {
         firestore.collection("users").document(user.uid)
             .get()
             .addOnSuccessListener { document ->
+                GuestUserManager.setGuestMode(applicationContext, false)
+                Log.d(TAG, "Set guest mode to false for logged-in user.")
                 if (document != null && document.exists()) {
                     updateUI(user)
                 } else {
@@ -112,6 +114,8 @@ class LoginActivity : BaseActivityWithBack() {
                 }
             }
             .addOnFailureListener { e ->
+                GuestUserManager.setGuestMode(applicationContext, false)
+                Log.d(TAG, "Set guest mode to false for logged-in user.")
                 Log.e(TAG, "Error checking user profile", e)
                 updateUI(user)
             }
@@ -163,6 +167,7 @@ class LoginActivity : BaseActivityWithBack() {
 
     private fun updateUI(user: FirebaseUser?) {
         if (user != null) {
+            GuestUserManager.setGuestMode(applicationContext, false)
             ensureCleanSlate()
             navigateToMain()
         }

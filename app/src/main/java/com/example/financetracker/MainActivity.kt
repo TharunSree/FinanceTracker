@@ -58,10 +58,12 @@ import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.app.NotificationCompat
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import com.example.financetracker.database.dao.TransactionDao
+import com.example.financetracker.repository.TransactionRepository
 import com.example.financetracker.ui.screens.StatisticsScreen
 import com.example.financetracker.utils.CategoryUtils
 import com.example.financetracker.utils.GuestUserManager
 import com.example.financetracker.viewmodel.StatisticsViewModel
+import com.example.financetracker.viewmodel.StatisticsViewModelFactory
 import com.example.financetracker.viewmodel.TransactionStatistics
 import com.google.android.material.card.MaterialCardView
 import kotlinx.coroutines.flow.first
@@ -71,7 +73,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
     override fun getLayoutResourceId(): Int = R.layout.activity_main
 
-    private val statisticsViewModel: StatisticsViewModel by viewModels()
     private lateinit var smsBroadcastReceiver: SmsBroadcastReceiver
     private lateinit var messageExtractor: MessageExtractor
     private var currentTransaction: Transaction? = null
@@ -83,9 +84,19 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     private lateinit var expandCollapseIcon: ImageView
     private var isExpanded = false
 
+    private val transactionRepository: TransactionRepository by lazy {
+        val database = TransactionDatabase.getDatabase(applicationContext)
+        // Pass BOTH the DAO and the applicationContext here
+        TransactionRepository(database.transactionDao(), applicationContext)
+    }
+
     private val transactionViewModel: TransactionViewModel by viewModels {
         val database = TransactionDatabase.getDatabase(this)
         TransactionViewModel.Factory(database, application)
+    }
+
+    private val statisticsViewModel: StatisticsViewModel by viewModels {
+        StatisticsViewModelFactory(transactionRepository)
     }
 
     private val transactionDao by lazy {
@@ -114,9 +125,10 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     }
 
     private fun updateGuestModeBanner() {
-        val guestModeBanner = binding.guestModeBanner
+        val guestModeBanner = binding.guestModeBanner // Assuming you use view binding
+        // Use the check that reads the shared preference
         val isGuestMode = GuestUserManager.isGuestMode(this)
-
+        Log.d(TAG, "Updating guest banner. isGuestMode (from context): $isGuestMode") // Add logging
         guestModeBanner.visibility = if (isGuestMode) View.VISIBLE else View.GONE
     }
 
@@ -438,16 +450,12 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     }
 
     private fun setupComposeStatistics() {
-        binding.statisticsComposeView.apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
+        // Use the correct ID from your activity_main.xml
+        binding.statisticsComposeView.apply { // Changed from composeViewStatistics
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
-                MaterialTheme {
-                    StatisticsScreen(statisticsViewModel)
-                }
+                // Pass the correctly initialized statisticsViewModel
+                StatisticsScreen(viewModel = statisticsViewModel)
             }
         }
     }
@@ -1091,13 +1099,20 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
             // Show current user info
             val currentDateTime = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Calendar.getInstance().time)
-            Log.d(TAG, "Current Date and Time (Local - YYYY-MM-DD HH:MM:SS formatted): $currentDateTime")
+            Log.d(TAG, "Current Date and Time (Local - yyyy-MM-DD HH:MM:SS formatted): $currentDateTime")
             Log.d(TAG, "Current User's Login: ${currentUser.email}")
 
             // Update subtitle with user info
             supportActionBar?.subtitle = "Logged in as: ${currentUser.email}"
+
+            // *** ADD THIS LINE ***
+            updateGuestModeBanner() // Update banner visibility when user is confirmed logged in
+
         } else {
             // User not logged in - BaseActivity should handle this
+
+            // *** ADD THIS LINE ***
+            updateGuestModeBanner() // Also update banner visibility when user is confirmed logged out/guest
         }
     }
 

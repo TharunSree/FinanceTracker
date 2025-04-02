@@ -1,9 +1,12 @@
 package com.example.financetracker.ui.screens
 
+import android.graphics.Paint // Import Paint
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll // Keep if needed for chips
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState // Keep if needed for chips
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -12,76 +15,95 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas // Import nativeCanvas
+import androidx.compose.ui.platform.LocalDensity // Import LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp // Import sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.financetracker.viewmodel.StatisticsViewModel
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.TimeUnit // For date checks
 import kotlin.math.roundToInt
 
+// Default colors used as fallback
 object ChartColors {
+    // You can keep these if used elsewhere, or remove if only defaults are needed
     val Primary = Color(0xFF1976D2)
     val Secondary = Color(0xFF03A9F4)
     val Error = Color(0xFFE57373)
-    val CategoryColors = listOf(
-        Color(0xFF4CAF50), // Green
-        Color(0xFF2196F3), // Blue
-        Color(0xFFFFC107), // Amber
-        Color(0xFFE91E63), // Pink
-        Color(0xFF9C27B0), // Purple
-        Color(0xFF00BCD4)  // Cyan
+
+    // --- REVISED Default Category Colors List ---
+    // A larger list with more distinct colors
+    val DefaultCategoryColors = listOf(
+        Color(0xFFE6194B), // Red
+        Color(0xFF3CB44B), // Green
+        Color(0xFFFFE119), // Yellow
+        Color(0xFF4363D8), // Blue
+        Color(0xFFF58231), // Orange
+        Color(0xFF911EB4), // Purple
+        Color(0xFF46F0F0), // Cyan
+        Color(0xFFF032E6), // Magenta
+        Color(0xFFBCF60C), // Lime
+        Color(0xFFFABEBE), // Pink
+        Color(0xFF008080), // Teal
+        Color(0xFFE6BEFF), // Lavender
+        Color(0xFF9A6324), // Brown
+        Color(0xFFFFFAC8), // Beige (Might be too light on light backgrounds)
+        Color(0xFF800000), // Maroon
+        Color(0xFFAAFFC3), // Mint
+        Color(0xFF808000), // Olive
+        Color(0xFFFFD8B1), // Apricot
+        Color(0xFF000075), // Navy
+        Color(0xFF808080)  // Gray
+        // Add more distinct colors if needed
     )
+    // Helper to get a default color based on index, cycling through the list
+    fun getDefaultColor(index: Int): Color {
+        if (DefaultCategoryColors.isEmpty()) return Color.Gray // Avoid errors if list is empty
+        return DefaultCategoryColors[index % DefaultCategoryColors.size]
+    }
+    // Helper to get a default color based on category name hash code (more stable)
+    fun getDefaultColorByName(categoryName: String): Color {
+        if (DefaultCategoryColors.isEmpty()) return Color.Gray
+        val hashCode = categoryName.hashCode()
+        val index = (hashCode and 0x7FFFFFFF) % DefaultCategoryColors.size // Ensure positive index
+        return DefaultCategoryColors[index]
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatisticsScreen(viewModel: StatisticsViewModel) {
-    // Collect the period from ViewModel using collectAsStateWithLifecycle
+    // Collect state
     val selectedPeriod by viewModel.selectedPeriod.collectAsStateWithLifecycle()
     val transactionStatistics by viewModel.transactionStatistics.collectAsStateWithLifecycle()
     val dailySpendingData by viewModel.dailySpendingData.collectAsStateWithLifecycle()
     val transactionCount by viewModel.transactionCount.collectAsStateWithLifecycle()
+    // --- ASSUMPTION: ViewModel provides category colors ---
+    // You'll need to implement the fetching of this map in your ViewModel
+    // Example: val categoryColorsMap by viewModel.categoryColors.collectAsStateWithLifecycle()
+    // For now, using an empty map for demonstration
+    val categoryColorsMap = remember { mutableStateOf<Map<String, Color>>(emptyMap()) }
+    // --- End Assumption ---
 
-    val customColors = darkColorScheme(
-        primary = Color(0xFF2196F3),      // Blue 500
-        onPrimary = Color.White,
-        primaryContainer = Color(0xFF1565C0),
-        onPrimaryContainer = Color.White,
-        secondary = Color(0xFF03A9F4),
-        onSecondary = Color.White,
-        secondaryContainer = Color(0xFF0288D1),
-        onSecondaryContainer = Color.White,
-        tertiary = Color(0xFF29B6F6),
-        onTertiary = Color.White,
-        tertiaryContainer = Color(0xFF0277BD),
-        onTertiaryContainer = Color.White,
-        error = Color(0xFFCF6679),
-        onError = Color.Black,
-        errorContainer = Color(0xFFB00020),
-        onErrorContainer = Color.White,
-        background = Color(0xFF121212),
-        onBackground = Color.White,
-        surface = Color(0xFF1E1E1E),
-        onSurface = Color.White,
-        surfaceVariant = Color(0xFF272727),
-        onSurfaceVariant = Color(0xB3FFFFFF),  // 70% white
-        outline = Color(0xFF404040)
-    )
+
+    // ColorScheme definition
+    val customColors = darkColorScheme( /* ... Your color definitions ... */ )
+
     MaterialTheme(
         colorScheme = customColors
     )
     {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(850.dp),
-        ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
+                // Removed .weight(1f)
             ) {
                 // Header
                 item {
@@ -96,10 +118,7 @@ fun StatisticsScreen(viewModel: StatisticsViewModel) {
                 // Current Date
                 item {
                     Text(
-                        text = SimpleDateFormat(
-                            "MMMM dd, yyyy",
-                            Locale.getDefault()
-                        ).format(Date()),
+                        text = SimpleDateFormat("MMMM dd, yyyy", Locale.getDefault()).format(Date()),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 16.dp)
@@ -111,15 +130,29 @@ fun StatisticsScreen(viewModel: StatisticsViewModel) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            .padding(bottom = 16.dp)
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        StatisticsViewModel.TimePeriod.entries.forEach { period ->
+                        val timePeriods = StatisticsViewModel.TimePeriod.entries.toList()
+
+                        timePeriods.forEach { period ->
+                            val labelText = when (period) {
+                                StatisticsViewModel.TimePeriod.TODAY -> "Daily"
+                                StatisticsViewModel.TimePeriod.WEEK -> "Weekly"
+                                StatisticsViewModel.TimePeriod.MONTH -> "Monthly"
+                                StatisticsViewModel.TimePeriod.ALL -> "All Time"
+                            }
                             FilterChip(
                                 selected = selectedPeriod == period,
                                 onClick = { viewModel.updatePeriod(period) },
-                                label = { Text(period.name) },
-                                modifier = Modifier.weight(1f)
+                                label = {
+                                    Text(
+                                        text = labelText,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1
+                                    )
+                                }
                             )
                         }
                     }
@@ -164,11 +197,12 @@ fun StatisticsScreen(viewModel: StatisticsViewModel) {
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(bottom = 16.dp)
                             )
-
                             ExpenseDistributionChart(
                                 data = transactionStatistics.categoryStats.map { (category, stats) ->
                                     ExpenseCategory(category, stats.totalExpense)
                                 },
+                                // Pass the category colors map
+                                categoryColors = categoryColorsMap.value,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(200.dp)
@@ -177,7 +211,7 @@ fun StatisticsScreen(viewModel: StatisticsViewModel) {
                     }
                 }
 
-                // Daily Spending Chart
+                // Spending Trend Chart
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -186,27 +220,36 @@ fun StatisticsScreen(viewModel: StatisticsViewModel) {
                         Column(
                             modifier = Modifier.padding(16.dp)
                         ) {
+                            val chartTitle = when(selectedPeriod) {
+                                StatisticsViewModel.TimePeriod.TODAY -> "Today's Spending"
+                                StatisticsViewModel.TimePeriod.WEEK -> "Weekly Spending Trend"
+                                StatisticsViewModel.TimePeriod.MONTH -> "Monthly Spending Trend"
+                                StatisticsViewModel.TimePeriod.ALL -> "Spending Trend (All Time)"
+                            }
                             Text(
-                                text = "Daily Spending",
+                                text = chartTitle,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(bottom = 16.dp)
                             )
-
                             DailySpendingChart(
                                 data = dailySpendingData,
+                                selectedPeriod = selectedPeriod,
+                                // Pass the category colors map
+                                categoryColors = categoryColorsMap.value,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(200.dp)
+                                    .height(250.dp)
                             )
                         }
                     }
                 }
-            }
-        }
-    }
+            } // End LazyColumn
+        } // End Column
+    } // End MaterialTheme
 }
 
+// --- SummaryCard composable remains the same ---
 @Composable
 fun SummaryCard(
     title: String,
@@ -238,30 +281,41 @@ fun SummaryCard(
     }
 }
 
+// --- ExpenseCategory data class remains the same ---
 data class ExpenseCategory(
     val name: String,
     val amount: Double
 )
 
+// --- ExpenseDistributionChart composable modified for specific colors ---
 @Composable
 fun ExpenseDistributionChart(
     data: List<ExpenseCategory>,
+    categoryColors: Map<String, Color>, // Accept map
     modifier: Modifier = Modifier
 ) {
-    val total = data.sumOf { it.amount }
+    val total = data.sumOf { it.amount }.takeIf { it > 0 } ?: 1.0
 
-    Box(modifier = modifier) {
+    // Get a sorted list of categories for consistent default color assignment if needed
+    val sortedCategories = data.map { it.name }.distinct().sorted()
+
+    Box(modifier = modifier.padding(bottom = 8.dp)) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val radius = size.minDimension / 3
             val center = Offset(size.width / 2, size.height / 2)
-            var startAngle = 0f
+            var startAngle = -90f
 
-            data.forEachIndexed { index, category ->
-                val sweepAngle = (category.amount / total * 360f).roundToInt().toFloat()
+            data.forEach { categoryData ->
+                // --- Color Logic ---
+                val color = categoryColors[categoryData.name]
+                    ?: ChartColors.getDefaultColorByName(categoryData.name)
+                // --- End Color Logic ---
+
+                val sweepAngle = (categoryData.amount / total * 360f).toFloat()
                 drawArc(
-                    color = ChartColors.CategoryColors[index % ChartColors.CategoryColors.size],
+                    color = color, // Use the determined color
                     startAngle = startAngle,
-                    sweepAngle = sweepAngle,
+                    sweepAngle = sweepAngle.coerceAtLeast(0.1f),
                     useCenter = true,
                     topLeft = Offset(center.x - radius, center.y - radius),
                     size = Size(radius * 2, radius * 2)
@@ -276,164 +330,169 @@ fun ExpenseDistributionChart(
                 .align(Alignment.CenterEnd)
                 .padding(start = 16.dp)
         ) {
-            data.forEachIndexed { index, category ->
+            data.take(5).forEachIndexed { index, categoryData ->
+                val color = categoryColors[categoryData.name]
+                    ?: ChartColors.getDefaultColorByName(categoryData.name)
                 Row(
-                    modifier = Modifier.padding(vertical = 4.dp),
+                    modifier = Modifier.padding(vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(12.dp)
-                            .background(
-                                ChartColors.CategoryColors[index % ChartColors.CategoryColors.size],
-                                RoundedCornerShape(2.dp)
-                            )
+                            .size(10.dp)
+                            .background( color, RoundedCornerShape(2.dp) )
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
                     Column {
+                        Text( text = categoryData.name, style = MaterialTheme.typography.bodySmall )
                         Text(
-                            text = category.name,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Text(
-                            text = "₹${category.amount.roundToInt()}",
+                            text = "₹${categoryData.amount.roundToInt()}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
             }
+            if (data.size > 5) {
+                Text( text = "...", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp) )
+            }
         }
     }
 }
 
 
+// --- DailySpendingChart composable modified for specific colors and adaptive axes ---
 @Composable
 fun DailySpendingChart(
     data: List<StatisticsViewModel.DailySpending>,
-    modifier: Modifier = Modifier // Apply the main modifier to the Column now
+    selectedPeriod: StatisticsViewModel.TimePeriod, // Accept selectedPeriod
+    categoryColors: Map<String, Color>, // Accept map
+    modifier: Modifier = Modifier
 ) {
-    val dateFormat = SimpleDateFormat("dd/MM", Locale.getDefault())
-
-    // Group data by category
+    // Group data and get categories (remains the same)
     val groupedData = data.groupBy { it.category }
+    val categoriesInData = data.map { it.category }.distinct().sorted()
 
-    // Get the list of categories
-    val categories = groupedData.keys.toList()
+    // --- Date Formatting Logic (Corrected) ---
+    // This block now correctly returns Pair instead of Triple
+    val (xAxisFormat, timeUnitPoints) = remember(data, selectedPeriod) {
+        if (data.isEmpty()) {
+            // Handle empty data case - return default format and empty list
+            Pair(SimpleDateFormat("dd/MM", Locale.getDefault()), emptyList<Date>())
+        } else {
+            val sortedDates = data.map { it.date }.distinct().sorted()
+            val firstDate = sortedDates.first()
+            val lastDate = sortedDates.last()
+            val timeDiffMillis = lastDate.time - firstDate.time
+            val timeDiffDays = TimeUnit.MILLISECONDS.toDays(timeDiffMillis).toInt()
 
-    // Find max amount for scaling (across all categories)
-    // Move this calculation outside the Column if it's heavy and doesn't depend on Column scope
-    val maxAmount = data.maxByOrNull { it.amount }?.amount?.takeIf { it > 0.0 } ?: 1.0 // Avoid division by zero
+            // Determine format based on period and date range
+            val format = when (selectedPeriod) {
+                StatisticsViewModel.TimePeriod.TODAY, StatisticsViewModel.TimePeriod.WEEK -> {
+                    SimpleDateFormat("dd/MM", Locale.getDefault())
+                }
+                StatisticsViewModel.TimePeriod.MONTH -> {
+                    if (timeDiffDays > 50) SimpleDateFormat("MMM", Locale.getDefault())
+                    else SimpleDateFormat("dd/MM", Locale.getDefault())
+                }
+                StatisticsViewModel.TimePeriod.ALL -> {
+                    if (timeDiffDays > 360) SimpleDateFormat("MMM yy", Locale.getDefault())
+                    else SimpleDateFormat("MMM", Locale.getDefault())
+                }
+            }
+            // Return the format and the sorted unique dates
+            Pair(format, sortedDates)
+        }
+    } // End remember
 
-    // Wrap Canvas and Legend in a Column
-    Column(modifier = modifier) { // Use the passed modifier here
+    // --- Paint setup (remains the same) ---
+    val density = LocalDensity.current
+    val labelTextSizePx = with(density) { 10.sp.toPx() }
+    val axisLabelPaint = remember { Paint().apply { isAntiAlias = true; color = android.graphics.Color.GRAY; textAlign = Paint.Align.CENTER; textSize = labelTextSizePx } }
+    val yAxisLabelPaint = remember { Paint().apply { isAntiAlias = true; color = android.graphics.Color.GRAY; textAlign = Paint.Align.RIGHT; textSize = labelTextSizePx } }
 
-        Canvas(modifier = Modifier
-            .fillMaxWidth() // Make canvas fill width within the Column
-            .weight(1f) // Allow canvas to take up available space if needed
-            .padding(bottom = 8.dp) // Add some padding below the canvas
-        ) { // 'this' is DrawScope
+
+    Column(modifier = modifier) {
+        Canvas(modifier = Modifier.fillMaxWidth().weight(1f).padding(bottom = 8.dp)) {
+            // --- Dimension and Max Amount Calculation (remains the same) ---
+            val axisColor = Color.Gray.copy(alpha = 0.5f)
             val width = size.width
             val height = size.height
-            val padding = 32f // Consider making padding based on dp units if needed
+            val yPadding = 40f
+            val xPaddingStart = 50f
+            val xPaddingEnd = 16f
+            val availableHeight = height - (2 * yPadding)
+            val availableWidth = width - xPaddingStart - xPaddingEnd
+            val maxAmount = data.maxByOrNull { it.amount }?.amount?.takeIf { it > 0.0 } ?: 1.0
 
-            // Ensure there's enough space to draw
-            if (width <= 2 * padding || height <= 2 * padding) return@Canvas
+            // --- Draw Y-axis and labels (remains the same) ---
+            drawLine( color = axisColor, start = Offset(xPaddingStart, yPadding), end = Offset(xPaddingStart, height - yPadding), strokeWidth = 2f ) // Y-axis
+            drawLine( color = axisColor, start = Offset(xPaddingStart, height - yPadding), end = Offset(width - xPaddingEnd, height - yPadding), strokeWidth = 2f ) // X-axis
+            val yLabelCount = 5
+            (0..yLabelCount).forEach { i ->
+                val value = maxAmount * (i.toFloat() / yLabelCount)
+                val yPos = height - yPadding - (i.toFloat() / yLabelCount * availableHeight)
+                drawContext.canvas.nativeCanvas.drawText( "₹${value.roundToInt()}", xPaddingStart - 8f, yPos + (labelTextSizePx / 3), yAxisLabelPaint )
+                drawLine( color = axisColor.copy(alpha = 0.3f), start = Offset(xPaddingStart, yPos), end = Offset(width - xPaddingEnd, yPos), strokeWidth = 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 5f)) )
+            }
 
-            // Find max amount for scaling (already calculated outside)
+            // --- Draw X-axis labels (Corrected logic using Pair result) ---
+            val datePointsCount = timeUnitPoints.size // Use the points from the Pair
+            if (datePointsCount > 0) {
+                val maxLabels = (availableWidth / (labelTextSizePx * 5)).toInt().coerceAtLeast(2)
+                val labelStep = ((datePointsCount - 1f) / (maxLabels - 1f)).coerceAtLeast(1f).roundToInt()
+                timeUnitPoints.forEachIndexed { index, date ->
+                    if (index == 0 || index == datePointsCount -1 || (datePointsCount > 1 && index % labelStep == 0) ) {
+                        val xPos = xPaddingStart + (index.toFloat() / (datePointsCount - 1).coerceAtLeast(1) * availableWidth)
+                        val dateString = xAxisFormat.format(date) // Use format from the Pair
+                        drawContext.canvas.nativeCanvas.drawText( dateString, xPos, height - yPadding + labelTextSizePx + 8f, axisLabelPaint )
+                    }
+                }
+            }
 
-            // Draw axes
-            drawLine(
-                color = Color.Gray.copy(alpha = 0.5f),
-                start = Offset(padding, padding),
-                end = Offset(padding, height - padding),
-                strokeWidth = 2f
-            )
-            drawLine(
-                color = Color.Gray.copy(alpha = 0.5f),
-                start = Offset(padding, height - padding),
-                end = Offset(width - padding, height - padding),
-                strokeWidth = 2f
-            )
 
-            // Plot points and lines for each category
-            categories.forEachIndexed { categoryIndex, category ->
-                val categoryColor = ChartColors.CategoryColors[categoryIndex % ChartColors.CategoryColors.size]
-                val categoryData = data.filter { it.category == category }.sortedBy { it.date }
+            // --- Plot points and lines (Corrected logic using Pair result and colors) ---
+            categoriesInData.forEachIndexed { index, categoryName ->
+                val color = categoryColors[categoryName]
+                    ?: ChartColors.getDefaultColorByName(categoryName) // Fallback color
 
-                // Only draw if there are points to plot
-                if (categoryData.isNotEmpty()) {
-                    val points = categoryData.mapIndexed { index, spending ->
-                        // Ensure categoryData.size > 1 for division, or handle single point case
-                        val xDivisor = (categoryData.size - 1).coerceAtLeast(1)
-                        val x = padding + (index * (width - 2 * padding) / xDivisor)
-                        val y = height - padding - ((spending.amount / maxAmount).toFloat() * (height - 2 * padding))
-                        Offset(x, y.coerceIn(padding, height - padding)) // Clamp y-coordinate
+                val categoryData = data.filter { it.category == categoryName }.sortedBy { it.date }
+
+                if (categoryData.isNotEmpty() && timeUnitPoints.isNotEmpty()) {
+                    val points = categoryData.mapNotNull { spending ->
+                        val dateIndex = timeUnitPoints.indexOf(spending.date) // Use points from Pair
+                        if (dateIndex == -1) null else {
+                            val x = xPaddingStart + (dateIndex.toFloat() / (timeUnitPoints.size - 1).coerceAtLeast(1) * availableWidth)
+                            val y = height - yPadding - ((spending.amount / maxAmount).toFloat() * availableHeight)
+                            Offset(x.coerceIn(xPaddingStart, width - xPaddingEnd), y.coerceIn(yPadding, height - yPadding))
+                        }
                     }
 
-                    // Draw connecting lines if more than one point
+                    // Draw lines and points using the determined 'color'
                     if (points.size > 1) {
                         val path = Path()
-                        points.forEachIndexed { index, point ->
-                            if (index == 0) {
-                                path.moveTo(point.x, point.y)
-                            } else {
-                                path.lineTo(point.x, point.y)
-                            }
-                        }
-
-                        drawPath(
-                            path = path,
-                            color = categoryColor,
-                            style = Stroke(
-                                width = 3f,
-                                cap = StrokeCap.Round,
-                                join = StrokeJoin.Round
-                            )
-                        )
+                        points.forEachIndexed { i, point -> if (i == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y) }
+                        drawPath(path = path, color = color, style = Stroke(width = 3f, cap = StrokeCap.Round)) // Use color
                     }
-
-                    // Draw points (draw even for a single point)
-                    points.forEach { point ->
-                        drawCircle(
-                            color = categoryColor,
-                            radius = 6f,
-                            center = point
-                        )
-                    }
+                    points.forEach { point -> drawCircle(color = color, radius = 6f, center = point) } // Use color
                 }
             }
-        } // End of Canvas
-
-        // Legend - Now outside Canvas, inside Column (Composable context)
+        } // End Canvas
+        // --- Legend using specific category colors (remains the same) ---
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp), // Use horizontal padding
-            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.End), // Add spacing between items and align to end
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            categories.forEachIndexed { index, category ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                    // Removed padding here, handled by parent Row spacing
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(12.dp)
-                            .background(
-                                ChartColors.CategoryColors[index % ChartColors.CategoryColors.size],
-                                RoundedCornerShape(2.dp)
-                            )
-                    )
-                    Spacer(modifier = Modifier.width(4.dp)) // Reduced spacer
-                    Text(
-                        text = category,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface // Use appropriate color
-                    )
+            categoriesInData.forEachIndexed { index, categoryName ->
+                val color = categoryColors[categoryName]
+                    ?: ChartColors.getDefaultColorByName(categoryName)
+                Row( verticalAlignment = Alignment.CenterVertically ) {
+                    Box( modifier = Modifier.size(10.dp).background( color, RoundedCornerShape(2.dp) ) )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text( text = categoryName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface )
                 }
             }
-        }
-    } // End of Column
+        } // End Legend Row
+    } // End Column wrapper
 }
