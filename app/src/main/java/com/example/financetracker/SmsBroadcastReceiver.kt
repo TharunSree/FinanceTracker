@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.provider.Telephony
+import android.telephony.SmsMessage
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.financetracker.database.TransactionDatabase
@@ -45,6 +46,26 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
             "USD" to listOf(Regex("""\$\s*([\d,]+\.?\d*)""")),
             "EUR" to listOf(Regex("""€\s*([\d,]+\.?\d*)""")),
             "GBP" to listOf(Regex("""£\s*([\d,]+\.?\d*)"""))
+        )
+
+        private val financialSenders = listOf(
+            // Main bank senders
+            "SBIUPI", "SBI", "SBIPSG", "HDFCBK", "ICICI", "AXISBK", "PAYTM",
+            "GPAY", "PHONEPE", "-SBIINB", "-HDFCBK", "-ICICI", "-AXISBK",
+            "CENTBK", "BOIIND", "PNBSMS", "CANBNK", "UNIONB",
+            "KOTAKB", "INDUSB", "YESBNK",
+
+            // Additional variations
+            "HDFCBANK", "ICICIBK", "SBIBANK", "AXISBANK", "KOTAK",
+            "SBI-UPI", "HDFC-UPI", "ICICI-UPI", "AXIS-UPI",
+            "VK-HDFCBK", "VM-HDFCBK", "VK-ICICI", "VM-ICICI",
+            "VK-SBIINB", "VM-SBIINB", "BZ-HDFCBK", "BZ-ICICI",
+
+            // UPI services
+            "UPIBNK", "UPIPAY", "BHIMPAY", "RAZORPAY",
+
+            // Common variations with different prefixes
+            "AD-", "TM-", "DM-", "BZ-", "VM-", "VK-"
         )
     }
 
@@ -86,62 +107,65 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
         }
     }
 
-    // In SmsBroadcastReceiver.kt
-    private fun processMessage(context: Context, messageBody: String) {
-        coroutineScope.launch {
-            try {
-                Log.d(TAG, "Starting message processing with extractor")
-                val messageExtractor = MessageExtractor(context)
-                val details = messageExtractor.extractTransactionDetails(messageBody)
-
-                if (details != null) {
-                    Log.d(TAG, "Extracted details: $details")
-
-                    val transaction = Transaction(
-                        id = 0,
-                        name = details.merchant.ifBlank { "Unknown Merchant" },
-                        amount = details.amount,
-                        date = details.date,
-                        category = if (details.category == "Uncategorized") "" else details.category,
-                        merchant = details.merchant,
-                        description = details.description
-                    )
-
-                    // Save to Room database
-                    val database = TransactionDatabase.getDatabase(context)
-                    database.transactionDao().insertTransaction(transaction)
-                    Log.d(TAG, "Transaction successfully added to the Room database")
-
-                    // Save to Firestore
-                    addTransactionToFirestore(transaction)
-
-                    // Show appropriate notification
-                    if (transaction.name == "Unknown Merchant" || transaction.category.isBlank()) {
-                        showDetailsNeededNotification(context, transaction, messageBody)
-                    } else {
-                        showTransactionNotification(context, transaction)
-                    }
-                } else {
-                    Log.e(TAG, "Could not extract transaction details from message: $messageBody")
-                    showFailureNotification(context, messageBody)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error processing message", e)
-                e.printStackTrace()
-                showFailureNotification(context, messageBody)
-            }
+    private fun isFinancialMessage(sender: String, message: String): Boolean {
+        // Check if the sender is a known financial sender
+        if (!senderMatches(sender)) {
+            Log.d(TAG, "Sender does not match financial senders: $sender")
+            return false
         }
+
+        // Check if message contains amount pattern
+        if (!hasAmount(message)) {
+            Log.d(TAG, "Message does not contain amount pattern")
+            return false
+        }
+
+        // Check if message contains debit keywords
+        if (!isDebitTransaction(message)) {
+            Log.d(TAG, "Message does not contain debit keywords")
+            return false
+        }
+
+        Log.d(TAG, "Message identified as financial message")
+        return true
     }
 
-    private fun addTransactionToFirestore(transaction: Transaction) {
-        firestore.collection("transactions")
-            .add(transaction)
-            .addOnSuccessListener {
-                Log.d(TAG, "Transaction successfully added to Firestore")
-            }
-            .addOnFailureListener { e ->
-                Log.e(TAG, "Error adding transaction to Firestore: ${e.message}")
-            }
+    private fun hasAmount(message: String): Boolean {
+        val hasAmount = currencyPatterns.values.flatten().any { pattern ->
+            pattern.find(message) != null
+        }
+        Log.d(TAG, "Message has amount: $hasAmount")
+        return hasAmount
+    }
+
+    private fun isDebitTransaction(message: String): Boolean {
+        val debitKeywords = listOf(
+            "debited",
+            "debit",
+            "spent",
+            "paid",
+            "withdrawn",
+            "purchase",
+            "payment",
+            "transferred",
+            "transaction"
+        )
+
+        val isDebitTransaction = debitKeywords.any { keyword ->
+            message.contains(keyword, ignoreCase = true)
+        }
+        Log.d(TAG, "Message is debit transaction: $isDebitTransaction")
+        return isDebitTransaction
+    }
+
+    private fun senderMatches(sender: String): Boolean {
+        val matched = financialSenders.any {
+            sender.contains(it, ignoreCase = true) ||
+                    it.startsWith(sender, ignoreCase = true)
+        }
+
+        Log.d(TAG, "Sender check: $sender -> $matched")
+        return matched
     }
 
     private fun createNotificationChannels(context: Context) {
@@ -183,186 +207,5 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
                 notificationManager.createNotificationChannel(this)
             }
         }
-    }
-
-    // Create a debug notification to help troubleshoot background processing
-    private fun debugNotification(context: Context, message: String) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val notificationManager =
-                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-            NotificationChannel(
-                "debug_channel",
-                "Debug Information",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Debug notifications for app troubleshooting"
-                notificationManager.createNotificationChannel(this)
-            }
-        }
-
-        val notification = NotificationCompat.Builder(context, "debug_channel")
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("SMS Debug")
-            .setContentText(message)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
-
-        val notificationManager =
-            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        notificationManager.notify(
-            System.currentTimeMillis().toInt(),
-            notification
-        )
-    }
-
-    private fun showDetailsNeededNotification(
-        context: Context,
-        transaction: Transaction,
-        message: String
-    ) {
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("SHOW_TRANSACTION_DIALOG", true)
-            putExtra("TRANSACTION_MESSAGE", message)
-            putExtra("TRANSACTION_AMOUNT", transaction.amount)
-            putExtra("TRANSACTION_DATE", transaction.date)
-            putExtra("TRANSACTION_MERCHANT", transaction.merchant)
-            putExtra("TRANSACTION_DESCRIPTION", transaction.description)
-        }
-
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            System.currentTimeMillis().toInt(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = NotificationCompat.Builder(context, DETAILS_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Transaction Details Needed")
-            .setContentText("₹${transaction.amount} - Tap to add details")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_REMINDER)
-            .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
-            .build()
-
-        val notificationManager =
-            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        notificationManager.notify(
-            System.currentTimeMillis().toInt(),
-            notification
-        )
-    }
-
-    private fun showTransactionNotification(context: Context, transaction: Transaction) {
-        val notification = NotificationCompat.Builder(context, TRANSACTION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Transaction Recorded")
-            .setContentText("${transaction.name}: ₹${transaction.amount}")
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setAutoCancel(true)
-            .build()
-
-        val notificationManager =
-            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        notificationManager.notify(
-            System.currentTimeMillis().toInt(),
-            notification
-        )
-    }
-
-    private fun showFailureNotification(context: Context, message: String) {
-        val notification = NotificationCompat.Builder(context, DETAILS_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Transaction Processing Failed")
-            .setContentText("Unable to process transaction automatically")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .build()
-
-        val notificationManager =
-            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        notificationManager.notify(
-            System.currentTimeMillis().toInt(),
-            notification
-        )
-    }
-
-    private fun isFinancialMessage(sender: String, message: String): Boolean {
-        // First check if the sender is a known financial sender
-        if (senderMatches(sender)) {
-            Log.d(TAG, "Sender matched: $sender")
-            return true
-        }
-
-        // Add explicit debit/credit keywords
-        val debitKeywords = listOf(
-            "debited",
-            "debit",
-            "spent",
-            "paid",
-            "withdrawn",
-            "purchase",
-            "payment",
-            "transferred",
-            "transaction"
-        )
-
-        // Check if message contains amount pattern AND debit keywords
-        val hasAmount = currencyPatterns.values.flatten().any { pattern ->
-            val matches = pattern.find(message) != null
-            if (matches) {
-                Log.d(TAG, "Found amount pattern in message")
-            }
-            matches
-        }
-
-        val isDebitTransaction = debitKeywords.any { keyword ->
-            val matches = message.contains(keyword, ignoreCase = true)
-            if (matches) {
-                Log.d(TAG, "Found debit keyword: $keyword")
-            }
-            matches
-        }
-
-        val isFinancial = hasAmount && isDebitTransaction
-        Log.d(TAG, "Message financial check: hasAmount=$hasAmount, isDebitTransaction=$isDebitTransaction, result=$isFinancial")
-        return isFinancial
-    }
-
-    private fun senderMatches(sender: String): Boolean {
-        val financialSenders = listOf(
-            // Main bank senders
-            "SBIUPI", "SBI", "SBIPSG", "HDFCBK", "ICICI", "AXISBK", "PAYTM",
-            "GPAY", "PHONEPE", "-SBIINB", "-HDFCBK", "-ICICI", "-AXISBK",
-            "CENTBK", "BOIIND", "PNBSMS", "CANBNK", "UNIONB",
-            "KOTAKB", "INDUSB", "YESBNK",
-
-            // Additional variations
-            "HDFCBANK", "ICICIBK", "SBIBANK", "AXISBANK", "KOTAK",
-            "SBI-UPI", "HDFC-UPI", "ICICI-UPI", "AXIS-UPI",
-            "VK-HDFCBK", "VM-HDFCBK", "VK-ICICI", "VM-ICICI",
-            "VK-SBIINB", "VM-SBIINB", "BZ-HDFCBK", "BZ-ICICI",
-
-            // UPI services
-            "UPIBNK", "UPIPAY", "BHIMPAY", "RAZORPAY",
-
-            // Common variations with different prefixes
-            "AD-", "TM-", "DM-", "BZ-", "VM-", "VK-"
-        )
-
-        val matched = financialSenders.any {
-            sender.contains(it, ignoreCase = true) ||
-                    it.startsWith(sender, ignoreCase = true)
-        }
-
-        Log.d(TAG, "Sender check: $sender -> $matched")
-        return matched
     }
 }

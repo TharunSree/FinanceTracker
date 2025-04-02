@@ -5,35 +5,22 @@
     android:orientation="vertical"
     android:padding="16dp">
 
-    <EditText
-        android:id="@+id/editTransactionName"
+    <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Transaction Name"
-        android:inputType="text"
-        android:layout_marginBottom="8dp"/>
+        android:hint="Merchant">
 
-    <EditText
-        android:id="@+id/editTransactionAmount"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="Amount"
-        android:inputType="numberDecimal"
-        android:layout_marginBottom="8dp"/>
-
-    <EditText
-        android:id="@+id/editTransactionDate"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="Date"
-        android:focusable="false"
-        android:clickable="true"
-        android:layout_marginBottom="8dp"/>
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/editTransactionMerchant"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text" />
+    </com.google.android.material.textfield.TextInputLayout>
 
     <Spinner
         android:id="@+id/editTransactionCategory"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="8dp"/>
+        android:layout_marginTop="16dp" />
 
 </LinearLayout>

@@ -14,7 +14,6 @@ import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.database.entity.Transaction
 import com.example.financetracker.utils.GuestUserManager
 import com.example.financetracker.utils.MessageExtractor
-import com.example.financetracker.viewmodel.TransactionViewModel
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.*
@@ -167,10 +166,13 @@ class SmsProcessingService : Service() {
 
                     // Show appropriate notification
                     if (transaction.name == "Unknown Merchant" || transaction.category.isBlank()) {
-                        showDetailsNeededNotification(transaction, messageBody)
+                        showDetailsNeededNotification(transaction, messageBody, transaction)
                     } else {
                         showTransactionNotification(transaction)
                     }
+                } else {
+                    Log.e(TAG, "Could not extract transaction details from message: $messageBody")
+                    showFailureNotification(messageBody)
                 }
 
                 stopSelf(startId)
@@ -256,15 +258,16 @@ class SmsProcessingService : Service() {
         }
     }
 
-    private fun showDetailsNeededNotification(transaction: Transaction, message: String) {
+    private fun showDetailsNeededNotification(transaction: Transaction, message: String, fullTransaction: Transaction) {
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("SHOW_TRANSACTION_DIALOG", true)
             putExtra("TRANSACTION_MESSAGE", message)
-            putExtra("TRANSACTION_AMOUNT", transaction.amount)
-            putExtra("TRANSACTION_DATE", transaction.date)
-            putExtra("TRANSACTION_MERCHANT", transaction.merchant)
-            putExtra("TRANSACTION_DESCRIPTION", transaction.description)
+            putExtra("TRANSACTION_AMOUNT", fullTransaction.amount)
+            putExtra("TRANSACTION_DATE", fullTransaction.date)
+            putExtra("TRANSACTION_MERCHANT", fullTransaction.merchant)
+            putExtra("TRANSACTION_DESCRIPTION", fullTransaction.description)
+            putExtra("TRANSACTION_ID", fullTransaction.id) // Pass the transaction ID
         }
 
         val pendingIntent = PendingIntent.getActivity(
@@ -277,7 +280,7 @@ class SmsProcessingService : Service() {
         val notification = NotificationCompat.Builder(this, DETAILS_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Transaction Details Needed")
-            .setContentText("₹${transaction.amount} - Tap to add details")
+            .setContentText("₹${fullTransaction.amount} - Tap to add details")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
@@ -329,12 +332,12 @@ class SmsProcessingService : Service() {
         )
     }
 
-    override fun onBind(intent: Intent?): IBinder? {
+    override fun onBind(intent: Intent): IBinder? {
         return null
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        job.cancel()
+        job.cancel() // Cancel the coroutine job
     }
 }

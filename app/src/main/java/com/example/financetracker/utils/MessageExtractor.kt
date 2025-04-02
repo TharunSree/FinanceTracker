@@ -2,6 +2,8 @@ package com.example.financetracker.utils
 
 import android.content.Context
 import android.util.Log
+import com.example.financetracker.utils.ApiConfig
+import com.example.financetracker.utils.GeminiMessageExtractor
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.mlkit.nl.entityextraction.*
 import kotlinx.coroutines.Dispatchers
@@ -24,15 +26,15 @@ class MessageExtractor(private val context: Context) {
 
     private val currencyPatterns = mapOf(
         "INR" to listOf(
-            Regex("""(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)"""),
-            Regex("""(?:INR|Rs\.?)\s*([\d,]+\.?\d*)"""),
-            Regex("""debited by\s*([\d,]+\.?\d*)""", RegexOption.IGNORE_CASE),
-            Regex("""Payment of Rs\s*([\d,]+\.?\d*)""", RegexOption.IGNORE_CASE),
-            Regex("""debited for INR\s*([\d,]+\.?\d*)""", RegexOption.IGNORE_CASE)
+            Regex("""(?:Rs\.?|INR|₹)\s*([\d,]+\.\d*)"""),
+            Regex("""(?:INR|Rs\.?)\s*([\d,]+\.\d*)"""),
+            Regex("""debited by\s*([\d,]+\.\d*)""", RegexOption.IGNORE_CASE),
+            Regex("""Payment of Rs\s*([\d,]+\.\d*)""", RegexOption.IGNORE_CASE),
+            Regex("""debited for INR\s*([\d,]+\.\d*)""", RegexOption.IGNORE_CASE)
         ),
-        "USD" to listOf(Regex("""\$\s*([\d,]+\.?\d*)""")),
-        "EUR" to listOf(Regex("""€\s*([\d,]+\.?\d*)""")),
-        "GBP" to listOf(Regex("""£\s*([\d,]+\.?\d*)"""))
+        "USD" to listOf(Regex("""\$\s*([\d,]+\.\d*)""")),
+        "EUR" to listOf(Regex("""€\s*([\d,]+\.\d*)""")),
+        "GBP" to listOf(Regex("""£\s*([\d,]+\.\d*)"""))
     )
 
     private val merchantPatterns = listOf(

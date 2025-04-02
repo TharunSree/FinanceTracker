@@ -1,7 +1,5 @@
 package com.example.financetracker.ui.screens
 
-
-import android.R.id.primary
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -18,12 +16,10 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.financetracker.model.*
 import com.example.financetracker.viewmodel.StatisticsViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.roundToInt
-
 
 object ChartColors {
     val Primary = Color(0xFF1976D2)
@@ -44,6 +40,9 @@ object ChartColors {
 fun StatisticsScreen(viewModel: StatisticsViewModel) {
     // Collect the period from ViewModel using collectAsStateWithLifecycle
     val selectedPeriod by viewModel.selectedPeriod.collectAsStateWithLifecycle()
+    val transactionStatistics by viewModel.transactionStatistics.collectAsStateWithLifecycle()
+    val dailySpendingData by viewModel.dailySpendingData.collectAsStateWithLifecycle()
+    val transactionCount by viewModel.transactionCount.collectAsStateWithLifecycle()
 
     val customColors = darkColorScheme(
         primary = Color(0xFF2196F3),      // Blue 500
@@ -137,12 +136,12 @@ fun StatisticsScreen(viewModel: StatisticsViewModel) {
                     ) {
                         SummaryCard(
                             title = "Total Expenses",
-                            value = "₹25,000",
+                            value = "₹${transactionStatistics.totalExpense.roundToInt()}",
                             modifier = Modifier.weight(1f)
                         )
                         SummaryCard(
                             title = "Transactions",
-                            value = "15",
+                            value = transactionCount.toString(),
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -167,12 +166,9 @@ fun StatisticsScreen(viewModel: StatisticsViewModel) {
                             )
 
                             ExpenseDistributionChart(
-                                data = listOf(
-                                    ExpenseCategory("Food", 8000.0),
-                                    ExpenseCategory("Transport", 5000.0),
-                                    ExpenseCategory("Shopping", 7000.0),
-                                    ExpenseCategory("Bills", 5000.0)
-                                ),
+                                data = transactionStatistics.categoryStats.map { (category, stats) ->
+                                    ExpenseCategory(category, stats.totalExpense)
+                                },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(200.dp)
@@ -198,7 +194,7 @@ fun StatisticsScreen(viewModel: StatisticsViewModel) {
                             )
 
                             DailySpendingChart(
-                                data = generateSampleDailyData(),
+                                data = dailySpendingData,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(200.dp)
@@ -311,85 +307,133 @@ fun ExpenseDistributionChart(
     }
 }
 
-data class DailySpending(
-    val date: Date,
-    val amount: Double
-)
 
 @Composable
 fun DailySpendingChart(
-    data: List<DailySpending>,
-    modifier: Modifier = Modifier
+    data: List<StatisticsViewModel.DailySpending>,
+    modifier: Modifier = Modifier // Apply the main modifier to the Column now
 ) {
     val dateFormat = SimpleDateFormat("dd/MM", Locale.getDefault())
 
-    Canvas(modifier = modifier) {
-        val width = size.width
-        val height = size.height
-        val padding = 32f
+    // Group data by category
+    val groupedData = data.groupBy { it.category }
 
-        // Find max amount for scaling
-        val maxAmount = data.maxByOrNull { it.amount }?.amount ?: 0.0
+    // Get the list of categories
+    val categories = groupedData.keys.toList()
 
-        // Draw axes
-        drawLine(
-            color = Color.Gray.copy(alpha = 0.5f),
-            start = Offset(padding, padding),
-            end = Offset(padding, height - padding),
-            strokeWidth = 2f
-        )
-        drawLine(
-            color = Color.Gray.copy(alpha = 0.5f),
-            start = Offset(padding, height - padding),
-            end = Offset(width - padding, height - padding),
-            strokeWidth = 2f
-        )
+    // Find max amount for scaling (across all categories)
+    // Move this calculation outside the Column if it's heavy and doesn't depend on Column scope
+    val maxAmount = data.maxByOrNull { it.amount }?.amount?.takeIf { it > 0.0 } ?: 1.0 // Avoid division by zero
 
-        // Plot points and lines
-        val points = data.mapIndexed { index, spending ->
-            val x = padding + (index * (width - 2 * padding) / (data.size - 1))
-            val y = height - padding - (spending.amount / maxAmount * (height - 2 * padding))
-            Offset(x, y.toFloat())
-        }
+    // Wrap Canvas and Legend in a Column
+    Column(modifier = modifier) { // Use the passed modifier here
 
-        // Draw connecting lines
-        val path = Path()
-        points.forEachIndexed { index, point ->
-            if (index == 0) {
-                path.moveTo(point.x, point.y)
-            } else {
-                path.lineTo(point.x, point.y)
+        Canvas(modifier = Modifier
+            .fillMaxWidth() // Make canvas fill width within the Column
+            .weight(1f) // Allow canvas to take up available space if needed
+            .padding(bottom = 8.dp) // Add some padding below the canvas
+        ) { // 'this' is DrawScope
+            val width = size.width
+            val height = size.height
+            val padding = 32f // Consider making padding based on dp units if needed
+
+            // Ensure there's enough space to draw
+            if (width <= 2 * padding || height <= 2 * padding) return@Canvas
+
+            // Find max amount for scaling (already calculated outside)
+
+            // Draw axes
+            drawLine(
+                color = Color.Gray.copy(alpha = 0.5f),
+                start = Offset(padding, padding),
+                end = Offset(padding, height - padding),
+                strokeWidth = 2f
+            )
+            drawLine(
+                color = Color.Gray.copy(alpha = 0.5f),
+                start = Offset(padding, height - padding),
+                end = Offset(width - padding, height - padding),
+                strokeWidth = 2f
+            )
+
+            // Plot points and lines for each category
+            categories.forEachIndexed { categoryIndex, category ->
+                val categoryColor = ChartColors.CategoryColors[categoryIndex % ChartColors.CategoryColors.size]
+                val categoryData = data.filter { it.category == category }.sortedBy { it.date }
+
+                // Only draw if there are points to plot
+                if (categoryData.isNotEmpty()) {
+                    val points = categoryData.mapIndexed { index, spending ->
+                        // Ensure categoryData.size > 1 for division, or handle single point case
+                        val xDivisor = (categoryData.size - 1).coerceAtLeast(1)
+                        val x = padding + (index * (width - 2 * padding) / xDivisor)
+                        val y = height - padding - ((spending.amount / maxAmount).toFloat() * (height - 2 * padding))
+                        Offset(x, y.coerceIn(padding, height - padding)) // Clamp y-coordinate
+                    }
+
+                    // Draw connecting lines if more than one point
+                    if (points.size > 1) {
+                        val path = Path()
+                        points.forEachIndexed { index, point ->
+                            if (index == 0) {
+                                path.moveTo(point.x, point.y)
+                            } else {
+                                path.lineTo(point.x, point.y)
+                            }
+                        }
+
+                        drawPath(
+                            path = path,
+                            color = categoryColor,
+                            style = Stroke(
+                                width = 3f,
+                                cap = StrokeCap.Round,
+                                join = StrokeJoin.Round
+                            )
+                        )
+                    }
+
+                    // Draw points (draw even for a single point)
+                    points.forEach { point ->
+                        drawCircle(
+                            color = categoryColor,
+                            radius = 6f,
+                            center = point
+                        )
+                    }
+                }
+            }
+        } // End of Canvas
+
+        // Legend - Now outside Canvas, inside Column (Composable context)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp), // Use horizontal padding
+            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.End), // Add spacing between items and align to end
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            categories.forEachIndexed { index, category ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                    // Removed padding here, handled by parent Row spacing
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .background(
+                                ChartColors.CategoryColors[index % ChartColors.CategoryColors.size],
+                                RoundedCornerShape(2.dp)
+                            )
+                    )
+                    Spacer(modifier = Modifier.width(4.dp)) // Reduced spacer
+                    Text(
+                        text = category,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface // Use appropriate color
+                    )
+                }
             }
         }
-
-        drawPath(
-            path = path,
-            color = ChartColors.Primary,
-            style = Stroke(
-                width = 3f,
-                cap = StrokeCap.Round,
-                join = StrokeJoin.Round
-            )
-        )
-
-        // Draw points
-        points.forEach { point ->
-            drawCircle(
-                color = ChartColors.Primary,
-                radius = 6f,
-                center = point
-            )
-        }
-    }
-}
-
-private fun generateSampleDailyData(): List<DailySpending> {
-    val calendar = Calendar.getInstance()
-    return (0..6).map { daysAgo ->
-        calendar.add(Calendar.DAY_OF_MONTH, -1)
-        DailySpending(
-            date = calendar.time,
-            amount = (1000..5000).random().toDouble()
-        )
-    }.reversed()
+    } // End of Column
 }

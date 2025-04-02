@@ -3,20 +3,28 @@ package com.example.financetracker
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.MenuItem
+import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import android.widget.Button
 import android.widget.TableLayout
 import android.widget.TableRow
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.content.ContextCompat
+import androidx.databinding.DataBindingUtil.setContentView
 import com.example.financetracker.database.TransactionDatabase
-import com.example.financetracker.MainActivity
+import com.example.financetracker.AddTransactionActivity
+import com.example.financetracker.BaseActivity
+import com.example.financetracker.R
 import com.example.financetracker.database.entity.Transaction
+import com.example.financetracker.databinding.ActivityTransactionsBinding
 import com.example.financetracker.databinding.NavHeaderBinding
 import com.example.financetracker.viewmodel.TransactionViewModel
 import com.google.android.material.chip.ChipGroup
@@ -29,6 +37,7 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
 
     override fun getLayoutResourceId(): Int = R.layout.activity_transactions
 
+    private lateinit var binding: ActivityTransactionsBinding
     private lateinit var transactionTableLayout: TableLayout
     private lateinit var filterChipGroup: ChipGroup
     private lateinit var categoryFilterAutoComplete: AutoCompleteTextView
@@ -47,37 +56,15 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            result.data?.let { data ->
-                val id = data.getIntExtra("id", 0)
-                val name = data.getStringExtra("name") ?: ""
-                val amount = data.getDoubleExtra("amount", 0.0)
-                val date = data.getLongExtra("date", System.currentTimeMillis())
-                val category = data.getStringExtra("category") ?: ""
-                val merchant = data.getStringExtra("merchant") ?: ""
-                val description = data.getStringExtra("description") ?: ""
-
-                val transaction = Transaction(
-                    id = id,
-                    name = name,
-                    amount = amount,
-                    date = date,
-                    category = category,
-                    merchant = merchant,
-                    description = description
-                )
-
-                if (id != 0) {
-                    transactionViewModel.updateTransaction(transaction)
-                } else {
-                    transactionViewModel.addTransaction(transaction)
-                }
-            }
+            // Refresh transactions when a new transaction is added or updated
+            refreshTransactions()
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_transactions)
+        binding = ActivityTransactionsBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
         transactionTableLayout = findViewById(R.id.transactionTableLayout)
         filterChipGroup = findViewById(R.id.filterChipGroup)
@@ -87,6 +74,8 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
         setupCategoryFilter()
         setupFab()
         observeTransactions()
+        observeLoading()
+        observeError()
         updateNavHeader()
 
         // Set title in toolbar
@@ -97,7 +86,7 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
     }
 
     private fun setupFilters() {
-        filterChipGroup.setOnCheckedStateChangeListener { group, checkedIds ->
+        filterChipGroup.setOnCheckedStateChangeListener { _, checkedIds ->
             when (checkedIds.firstOrNull()) {
                 R.id.chipAll -> {
                     currentFilter = TransactionFilter.ALL
@@ -134,12 +123,7 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
             val selectedCategory = categoryFilterAutoComplete.adapter.getItem(position) as String
             if (selectedCategory == "All Categories") {
                 // Reset category filter but maintain date filter
-                when (currentFilter) {
-                    TransactionFilter.ALL -> transactionViewModel.loadAllTransactions()
-                    TransactionFilter.TODAY -> transactionViewModel.loadTodayTransactions()
-                    TransactionFilter.WEEK -> transactionViewModel.loadWeekTransactions()
-                    TransactionFilter.MONTH -> transactionViewModel.loadMonthTransactions()
-                }
+                refreshTransactions()
             } else {
                 transactionViewModel.filterByCategory(selectedCategory)
             }
@@ -153,17 +137,23 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
         }
     }
 
-
-    private fun setupAddTransactionButton() {
-        findViewById<Button>(R.id.addTransactionButton).setOnClickListener {
-            val intent = Intent(this, AddTransactionActivity::class.java)
-            addTransactionLauncher.launch(intent)
-        }
-    }
-
     private fun observeTransactions() {
         transactionViewModel.filteredTransaction.observe(this) { transactions ->
             populateTable(transactions)
+        }
+    }
+
+    private fun observeLoading() {
+        transactionViewModel.loading.observe(this) { isLoading ->
+            binding.progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
+        }
+    }
+
+    private fun observeError() {
+        transactionViewModel.errorMessage.observe(this) { errorMessage ->
+            if (!errorMessage.isNullOrBlank()) {
+                Toast.makeText(this, errorMessage, Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -234,26 +224,11 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
     }
 
     private fun onEditTransaction(transaction: Transaction) {
-        val intent = Intent(this, AddTransactionActivity::class.java).apply {
-            putExtra("EDIT_MODE", true)
-            putExtra("TRANSACTION_ID", transaction.id)
-            putExtra("TRANSACTION_NAME", transaction.name)
-            putExtra("TRANSACTION_AMOUNT", transaction.amount)
-            putExtra("TRANSACTION_DATE", transaction.date) // Pass as Long timestamp
-            putExtra("TRANSACTION_CATEGORY", transaction.category)
-            putExtra("TRANSACTION_MERCHANT", transaction.merchant)
-            putExtra("TRANSACTION_DESCRIPTION", transaction.description)
+        val editTransactionDialog = EditTransactionDialogFragment(transaction) { updatedTransaction ->
+            transactionViewModel.updateTransaction(updatedTransaction)
+            refreshTransactions()
         }
-        addTransactionLauncher.launch(intent)
-    }
-
-    private fun parseDateToLong(date: String): Long {
-        return try {
-            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            dateFormat.parse(date)?.time ?: System.currentTimeMillis()
-        } catch (e: Exception) {
-            System.currentTimeMillis()
-        }
+        editTransactionDialog.show(supportFragmentManager, "EditTransactionDialog")
     }
 
     private fun formatDate(timestamp: Long): String {
@@ -261,7 +236,12 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
         return dateFormat.format(timestamp)
     }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return super.onOptionsItemSelected(item)
+    private fun refreshTransactions() {
+        when (currentFilter) {
+            TransactionFilter.ALL -> transactionViewModel.loadAllTransactions()
+            TransactionFilter.TODAY -> transactionViewModel.loadTodayTransactions()
+            TransactionFilter.WEEK -> transactionViewModel.loadWeekTransactions()
+            TransactionFilter.MONTH -> transactionViewModel.loadMonthTransactions()
+        }
     }
 }

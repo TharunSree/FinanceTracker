@@ -56,8 +56,6 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.app.NotificationCompat
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import com.example.financetracker.database.dao.TransactionDao
 import com.example.financetracker.ui.screens.StatisticsScreen
@@ -279,19 +277,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-
-        setTheme(R.style.Theme_FinanceTracker)
-
-        // Set system bars to transparent and use edge-to-edge
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.statusBarColor = Color.TRANSPARENT.toArgb()
-        window.navigationBarColor = Color.TRANSPARENT.toArgb()
-
-        // Set system bar appearance
-        WindowInsetsControllerCompat(window, window.decorView).apply {
-            isAppearanceLightStatusBars = false // Dark theme, so light status bar icons
-            isAppearanceLightNavigationBars = false // Dark theme, so light navigation bar icons
-        }
 
         setupComposeStatistics()
 

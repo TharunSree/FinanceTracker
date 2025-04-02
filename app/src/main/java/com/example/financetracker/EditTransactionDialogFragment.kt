@@ -24,9 +24,7 @@ class EditTransactionDialogFragment(
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val view = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_edit_transaction, null)
 
-        val nameEditText: EditText = view.findViewById(R.id.editTransactionName)
-        val amountEditText: EditText = view.findViewById(R.id.editTransactionAmount)
-        val dateEditText: EditText = view.findViewById(R.id.editTransactionDate)
+        val merchantEditText: EditText = view.findViewById(R.id.editTransactionMerchant)
         val categorySpinner: Spinner = view.findViewById(R.id.editTransactionCategory)
 
         // Initialize calendar with transaction date
@@ -40,32 +38,7 @@ class EditTransactionDialogFragment(
         categorySpinner.adapter = adapter
 
         // Set initial values
-        nameEditText.setText(transaction.name)
-        amountEditText.setText(transaction.amount.toString())
-        dateEditText.setText(dateFormat.format(Date(transaction.date)))
-
-        // Make date field read-only
-        dateEditText.isFocusable = false
-        dateEditText.isFocusableInTouchMode = false
-
-        // Set up date picker dialog
-        val dateSetListener = DatePickerDialog.OnDateSetListener { _, year, month, dayOfMonth ->
-            calendar.set(Calendar.YEAR, year)
-            calendar.set(Calendar.MONTH, month)
-            calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
-            dateEditText.setText(dateFormat.format(calendar.time))
-        }
-
-        // Show date picker when clicking the date field
-        dateEditText.setOnClickListener {
-            DatePickerDialog(
-                requireContext(),
-                dateSetListener,
-                calendar.get(Calendar.YEAR),
-                calendar.get(Calendar.MONTH),
-                calendar.get(Calendar.DAY_OF_MONTH)
-            ).show()
-        }
+        merchantEditText.setText(transaction.merchant)
 
         // Set the spinner selection to match the current category
         val categoryPosition = categories.indexOf(transaction.category)
@@ -78,22 +51,13 @@ class EditTransactionDialogFragment(
             .setView(view)
             .setPositiveButton(R.string.save) { _, _ ->
                 // Validate inputs
-                if (nameEditText.text.isBlank() || amountEditText.text.isBlank()) {
+                if (merchantEditText.text.isBlank()) {
                     Toast.makeText(context, "Please fill all fields", Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
 
-                val amount = try {
-                    amountEditText.text.toString().toDouble()
-                } catch (e: NumberFormatException) {
-                    Toast.makeText(context, "Please enter a valid amount", Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-
                 val updatedTransaction = transaction.copy(
-                    name = nameEditText.text.toString(),
-                    amount = amount,
-                    date = calendar.timeInMillis,
+                    merchant = merchantEditText.text.toString(),
                     category = categorySpinner.selectedItem.toString()
                 )
                 onUpdate(updatedTransaction)

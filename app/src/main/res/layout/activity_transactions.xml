@@ -100,7 +100,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:shrinkColumns="*"
-                android:stretchColumns="*">
+                android:stretchColumns="*" >
 
                 <TableRow
                     android:layout_width="match_parent"
@@ -160,8 +160,16 @@
                     android:padding="16dp"
                     android:shrinkColumns="*"
                     android:stretchColumns="*" />
-
             </ScrollView>
+
+            <ProgressBar
+                android:id="@+id/progressBar"
+                style="?android:attr/progressBarStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:visibility="gone" />
+
         </LinearLayout>
 
         <com.google.android.material.floatingactionbutton.FloatingActionButton
