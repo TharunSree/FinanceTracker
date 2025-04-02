@@ -29,4 +29,7 @@ interface CategoryDao {
 
     @Query("SELECT * FROM category_table WHERE name = :name AND userId = :userId LIMIT 1")
     suspend fun getCategoryByName(name: String, userId: String?): Category?
+
+    @Query("UPDATE category_table SET colorHex = :colorHex WHERE id = :categoryId")
+    suspend fun updateCategoryColor(categoryId: Int, colorHex: String?)
 }

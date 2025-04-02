@@ -86,7 +86,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
     private val transactionRepository: TransactionRepository by lazy {
         val database = TransactionDatabase.getDatabase(applicationContext)
-        // Pass BOTH the DAO and the applicationContext here
         TransactionRepository(database.transactionDao(), applicationContext)
     }
 
@@ -96,7 +95,11 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     }
 
     private val statisticsViewModel: StatisticsViewModel by viewModels {
-        StatisticsViewModelFactory(transactionRepository)
+        StatisticsViewModelFactory(
+            transactionRepository,
+            TransactionDatabase.getDatabase(applicationContext), // Pass DB instance
+            application // Pass Application instance
+        )
     }
 
     private val transactionDao by lazy {

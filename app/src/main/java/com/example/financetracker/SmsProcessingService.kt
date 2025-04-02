@@ -95,95 +95,126 @@ class SmsProcessingService : Service() {
         Log.d(TAG, "Service started with message from $sender")
 
         if (messageBody != null) {
-            processMessage(messageBody, startId)
+            processMessage(messageBody, startId) // Pass startId
         } else {
             Log.e(TAG, "No message body provided in intent")
-            stopSelf(startId)
+            stopSelfResult(startId) // Use stopSelfResult
         }
 
-        // If service gets killed, restart it
         return START_REDELIVER_INTENT
     }
 
     private fun processMessage(messageBody: String, startId: Int) {
         coroutineScope.launch {
+            var shouldStopService = true // Flag to control stopping the service
             try {
                 Log.d(TAG, "Starting message processing with extractor")
+                updateProcessingNotification("Extracting transaction details...") // Update status
                 val messageExtractor = MessageExtractor(this@SmsProcessingService)
                 val details = messageExtractor.extractTransactionDetails(messageBody)
 
-                updateProcessingNotification("Extracting transaction details...")
-
                 if (details != null) {
                     Log.d(TAG, "Extracted details: $details")
+                    updateProcessingNotification("Checking details...") // Update status
 
                     // Get user ID
                     val userId = FirebaseAuth.getInstance().currentUser?.uid
                         ?: GuestUserManager.getGuestUserId(applicationContext)
 
-                    // Check for duplicates
+                    // Get DB and DAOs
                     val database = TransactionDatabase.getDatabase(this@SmsProcessingService)
-                    val existingTransaction = database.transactionDao()
+                    val transactionDao = database.transactionDao()
+                    val merchantDao = database.merchantDao() // Get MerchantDao
+
+                    // --- Check for Duplicate Transaction (Existing Logic) ---
+                    val existingTransaction = transactionDao
                         .getTransactionsInTimeRange(
-                            details.date - 60000,
-                            details.date + 60000
+                            details.date - 60000, // 1 minute before
+                            details.date + 60000  // 1 minute after
                         )
                         .firstOrNull { transaction ->
-                            transaction.amount == details.amount &&
+                            // Explicitly return the result of the boolean expression
+                            return@firstOrNull transaction.amount == details.amount &&
                                     transaction.userId == userId &&
+                                    // Use equals for safe string comparison, ignoring case for merchant
                                     transaction.name.equals(details.merchant, ignoreCase = true)
                         }
 
                     if (existingTransaction != null) {
                         Log.d(TAG, "Duplicate transaction found, skipping")
-                        stopSelf(startId)
+                        // stopSelf(startId) // Don't stop here, let finally block handle it
                         return@launch
                     }
+                    // --- End Duplicate Check ---
 
+                    // --- Check for known merchant category ---
+                    var knownCategory: String? = null
+                    if (!details.merchant.isNullOrBlank()) {
+                        Log.d(TAG, "Checking category for merchant: ${details.merchant}")
+                        knownCategory = merchantDao.getCategoryForMerchant(details.merchant, userId)
+                        if (knownCategory != null) {
+                            Log.d(TAG, "Found known category '$knownCategory' for merchant '${details.merchant}'")
+                        } else {
+                            Log.d(TAG, "No category found for merchant: ${details.merchant}")
+                        }
+                    } else {
+                        Log.d(TAG, "Extracted merchant name is blank, cannot check category.")
+                    }
+                    // --- End Merchant Check ---
+
+                    // Create Transaction object
                     val transaction = Transaction(
                         id = 0,
                         name = details.merchant.ifBlank { "Unknown Merchant" },
                         amount = details.amount,
                         date = details.date,
-                        category = if (details.category == "Uncategorized") "" else details.category,
+                        // Use known category if found, otherwise use blank (to trigger details dialog)
+                        category = knownCategory ?: "",
                         merchant = details.merchant,
                         description = details.description,
-                        userId = userId, // Add user ID
-                        documentId = ""  // Will be set when added to Firestore
+                        userId = userId,
+                        documentId = ""
                     )
 
-                    // Update notification
-                    updateProcessingNotification("Saving transaction...")
-
                     // Save to Room database
-                    database.transactionDao().insertTransaction(transaction)
-                    Log.d(TAG, "Transaction successfully added to the Room database")
+                    updateProcessingNotification("Saving transaction...") // Update status
+                    transactionDao.insertTransaction(transaction)
+                    Log.d(TAG, "Transaction successfully added to Room database with category: '${transaction.category}'")
 
-                    // Save to Firestore if not a guest user
+                    // Save to Firestore if not a guest user (Existing Logic)
                     if (!GuestUserManager.isGuestMode(userId)) {
-                        addTransactionToFirestore(transaction)
+                        addTransactionToFirestore(transaction) // Existing function
                     }
 
-                    // Show appropriate notification
-                    if (transaction.name == "Unknown Merchant" || transaction.category.isBlank()) {
-                        showDetailsNeededNotification(transaction, messageBody, transaction)
-                    } else {
+                    // --- Show appropriate notification ---
+                    if (knownCategory != null) {
+                        // Auto-categorized successfully
+                        Log.d(TAG, "Showing standard transaction notification.")
                         showTransactionNotification(transaction)
+                    } else {
+                        // Category unknown or merchant blank, need details
+                        Log.d(TAG, "Showing details needed notification.")
+                        showDetailsNeededNotification(transaction, messageBody, transaction) // Pass original message
                     }
+                    // --- End Notification Logic ---
+
                 } else {
                     Log.e(TAG, "Could not extract transaction details from message: $messageBody")
-                    showFailureNotification(messageBody)
+                    showFailureNotification(messageBody) // Existing function
                 }
 
-                stopSelf(startId)
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing message", e)
-                e.printStackTrace()
-                showFailureNotification(messageBody)
-                stopSelf(startId)
+                showFailureNotification(messageBody) // Existing function
+            } finally {
+                // Ensure the service stops itself
+                if (shouldStopService) {
+                    Log.d(TAG, "Stopping service with startId: $startId")
+                    stopSelfResult(startId) // Use stopSelfResult
+                }
             }
-        }
-    }
+        } // End CoroutineScope
+    } // End processMessage
 
     private fun updateProcessingNotification(statusText: String) {
         val notification = NotificationCompat.Builder(this, SERVICE_CHANNEL_ID)

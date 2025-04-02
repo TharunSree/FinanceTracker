@@ -1,18 +1,42 @@
 package com.example.financetracker.viewmodel
 
+import android.app.Application // Need application or context for user ID potentially
 import android.util.Log
+import androidx.compose.ui.graphics.Color // Import Compose Color
+import androidx.compose.ui.graphics.toArgb // To potentially convert Color to Int if needed elsewhere
+import androidx.core.graphics.ColorUtils // Useful for hex parsing if needed
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.financetracker.database.dao.CategoryDao // Import CategoryDao
 import com.example.financetracker.database.entity.Transaction
 import com.example.financetracker.repository.TransactionRepository
+import com.example.financetracker.utils.GuestUserManager // Needed for user ID
+import com.google.firebase.auth.FirebaseAuth // Needed for user ID
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.roundToInt
 
+fun parseColor(hexColor: String?): Color {
+    return try {
+        if (hexColor != null && hexColor.startsWith("#") && (hexColor.length == 7 || hexColor.length == 9)) {
+            // Add alpha if missing (assuming opaque)
+            val finalHex = if (hexColor.length == 7) "#FF${hexColor.substring(1)}" else hexColor
+            Color(android.graphics.Color.parseColor(finalHex)) // Use android graphics color parsing
+        } else {
+            Color.Transparent // Default or fallback color if hex is invalid/null
+        }
+    } catch (e: Exception) {
+        Log.w("ColorParse", "Failed to parse color: $hexColor", e)
+        Color.Transparent // Fallback on error
+    }
+}
+
 class StatisticsViewModel(
-    private val transactionRepository: TransactionRepository
+    private val transactionRepository: TransactionRepository,
+    private val categoryDao: CategoryDao,
+    private val application: Application
 ) : ViewModel() {
 
     data class DailySpending(
@@ -35,8 +59,16 @@ class StatisticsViewModel(
     private val _dailySpendingData = MutableStateFlow<List<DailySpending>>(emptyList())
     val dailySpendingData: StateFlow<List<DailySpending>> = _dailySpendingData.asStateFlow()
 
+    private val _categoryColorsMap = MutableStateFlow<Map<String, Color>>(emptyMap())
+    val categoryColorsMap: StateFlow<Map<String, Color>> = _categoryColorsMap.asStateFlow()
+
+
+
     init {
+        // Load stats on init (existing)
         loadStatistics()
+        // Load category colors on init
+        loadCategoryColors()
     }
 
     fun updatePeriod(period: TimePeriod) {
@@ -134,6 +166,39 @@ class StatisticsViewModel(
             }
         }
         return dailySpendingList
+    }
+
+    private fun loadCategoryColors() {
+        viewModelScope.launch {
+            // Get current user ID (you might need context/application here)
+            val userId = getCurrentUserId()
+
+            categoryDao.getAllCategories(userId) // Fetch categories from DAO
+                .map { categories ->
+                    // Convert List<Category> to Map<String, Color>
+                    categories.associate { category ->
+                        // Use the parseColor helper function
+                        category.name to parseColor(category.colorHex)
+                    }
+                }
+                .catch { e ->
+                    // Handle potential errors during fetch/map
+                    Log.e("StatisticsViewModel", "Error loading category colors", e)
+                    emit(emptyMap()) // Emit empty map on error
+                }
+                .collect { map ->
+                    // Update the StateFlow
+                    _categoryColorsMap.value = map
+                }
+        }
+    }
+
+    private fun getCurrentUserId(): String? {
+        // Reuse logic similar to TransactionRepository if applicable
+        val auth = FirebaseAuth.getInstance()
+        return auth.currentUser?.uid // Return null if no user logged in
+        // If you need guest support for categories specifically, add GuestUserManager logic:
+        // return auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(application)
     }
 
     enum class TimePeriod {

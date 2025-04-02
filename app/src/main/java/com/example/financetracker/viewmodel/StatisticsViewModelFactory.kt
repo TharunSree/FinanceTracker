@@ -1,22 +1,29 @@
-package com.example.financetracker.viewmodel // Or your appropriate package
+package com.example.financetracker.viewmodel
 
+import android.app.Application // Import Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import com.example.financetracker.database.TransactionDatabase // Import Database
 import com.example.financetracker.repository.TransactionRepository
-// Make sure the import path for StatisticsViewModel is correct
-import com.example.financetracker.viewmodel.StatisticsViewModel
 
+// Factory now needs Database and Application to provide all dependencies
 class StatisticsViewModelFactory(
-    private val repository: TransactionRepository
+    private val repository: TransactionRepository,
+    // Add database instance to get DAOs
+    private val database: TransactionDatabase,
+    // Add application instance
+    private val application: Application
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        // Check if the requested ViewModel class is StatisticsViewModel
         if (modelClass.isAssignableFrom(StatisticsViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            // Create and return an instance, passing the repository
-            return StatisticsViewModel(repository) as T
+            // Provide Repository, CategoryDao, and Application
+            return StatisticsViewModel(
+                repository,
+                database.categoryDao(), // Get CategoryDao from database instance
+                application
+            ) as T
         }
-        // If it's a different ViewModel class, throw an exception
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
     }
 }

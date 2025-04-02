@@ -12,4 +12,12 @@ interface MerchantDao {
 
     @Query("SELECT * FROM merchant_table WHERE name = :name LIMIT 1")
     suspend fun getMerchantByName(name: String): Merchant?
+
+    // --- ADD THIS QUERY ---
+    /**
+     * Retrieves the category associated with a specific merchant name for a user.
+     * Returns null if the merchant or category mapping doesn't exist.
+     */
+    @Query("SELECT category FROM merchant_table WHERE name = :merchantName AND userId = :userId LIMIT 1")
+    suspend fun getCategoryForMerchant(merchantName: String, userId: String?): String?
 }

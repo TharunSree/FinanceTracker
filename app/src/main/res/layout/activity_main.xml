@@ -140,7 +140,7 @@
                     <androidx.compose.ui.platform.ComposeView
                         android:id="@+id/statistics_compose_view"
                         android:layout_width="match_parent"
-                        android:layout_height="1200dp"
+                        android:layout_height="wrap_content"
                         android:layout_marginHorizontal="18dp"
                         android:layout_marginTop="16dp" />  <TextView
                     android:id="@+id/noTransactionsMessage"
