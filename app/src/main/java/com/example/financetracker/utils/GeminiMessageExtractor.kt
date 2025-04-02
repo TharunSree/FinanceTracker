@@ -5,10 +5,10 @@ import android.util.Log
 import com.google.ai.client.generativeai.GenerativeModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlinx.serialization.Serializable
 
 class GeminiMessageExtractor(private val context: Context, private val apiKey: String) {
 

@@ -23,7 +23,6 @@
                 android:background="?attr/colorPrimary"
                 android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar" />
 
-
             <TextView
                 android:id="@+id/guestModeBanner"
                 android:layout_width="match_parent"
@@ -34,138 +33,140 @@
                 android:text="Guest Mode - Data will not be backed up to the cloud"
                 android:textColor="#000000"
                 android:textSize="14sp"
-                android:visibility="gone" />
+                android:visibility="gone"
+                tools:visibility="visible" />
 
-            <androidx.core.widget.NestedScrollView
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="match_parent">
+                android:layout_height="match_parent"
+                android:orientation="vertical">
 
-                <LinearLayout
+                <androidx.constraintlayout.widget.ConstraintLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical">
+                    android:paddingBottom="8dp">
 
+                    <com.google.android.material.card.MaterialCardView
+                        android:id="@+id/statisticsCard"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="18dp"
+                        android:layout_marginTop="18dp"
+                        android:layout_marginEnd="18dp"
+                        android:layout_marginBottom="12dp"
+                        android:clickable="true"
+                        android:focusable="true"
+                        app:cardCornerRadius="8dp"
+                        app:cardElevation="4dp"
+                        app:layout_constraintBottom_toBottomOf="parent"
+                        app:layout_constraintEnd_toEndOf="parent"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintTop_toTopOf="parent"
+                        app:layout_constraintWidth_percent="0.875">
 
-                    <androidx.constraintlayout.widget.ConstraintLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content" android:paddingBottom="8dp">
-
-                        <com.google.android.material.card.MaterialCardView
-                            android:id="@+id/statisticsCard"
-                            android:layout_width="0dp"
+                        <LinearLayout
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_margin="18dp"
-                            android:layout_marginBottom="12dp"
-                            android:clickable="true"
-                            android:focusable="true"
-                            app:cardCornerRadius="8dp"
-                            app:cardElevation="4dp"
-                            app:layout_constraintBottom_toBottomOf="parent"
-                            app:layout_constraintEnd_toEndOf="parent"
-                            app:layout_constraintStart_toStartOf="parent"
-                            app:layout_constraintTop_toTopOf="parent"
-                            app:layout_constraintWidth_percent="0.875">
-
+                            android:orientation="vertical"
+                            android:padding="16dp">
 
                             <LinearLayout
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:orientation="vertical"
-                                android:padding="16dp">
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal">
 
-                                <LinearLayout
-                                    android:layout_width="match_parent"
+                                <TextView
+                                    android:layout_width="0dp"
                                     android:layout_height="wrap_content"
-                                    android:gravity="center_vertical"
-                                    android:orientation="horizontal">
+                                    android:layout_weight="1"
+                                    android:text="Transaction Statistics"
+                                    android:textAppearance="?attr/textAppearanceHeadline6"
+                                    android:textStyle="bold" />
 
-                                    <TextView
-                                        android:layout_width="0dp"
-                                        android:layout_height="wrap_content"
-                                        android:layout_weight="1"
-                                        android:text="Transaction Statistics"
-                                        android:textAppearance="?attr/textAppearanceHeadline6"
-                                        android:textStyle="bold" />
-
-                                    <ImageView
-                                        android:id="@+id/expandCollapseIcon"
-                                        android:layout_width="24dp"
-                                        android:layout_height="24dp"
-                                        android:contentDescription="Expand/Collapse"
-                                        android:src="@drawable/ic_expand_more" />
-                                </LinearLayout>
-
-                                <LinearLayout
-                                    android:layout_width="match_parent"
-                                    android:layout_height="wrap_content"
-                                    android:layout_marginTop="16dp"
-                                    android:orientation="vertical">
-
-                                    <TextView
-                                        android:id="@+id/maxExpenseText"
-                                        android:layout_width="match_parent"
-                                        android:layout_height="wrap_content"
-                                        android:text="Max Expense: ₹0.00"
-                                        android:textAppearance="?attr/textAppearanceBody1" />
-
-                                    <TextView
-                                        android:id="@+id/minExpenseText"
-                                        android:layout_width="match_parent"
-                                        android:layout_height="wrap_content"
-                                        android:layout_marginTop="8dp"
-                                        android:text="Min Expense: ₹0.00"
-                                        android:textAppearance="?attr/textAppearanceBody1" />
-                                </LinearLayout>
-
-                                <LinearLayout
-                                    android:id="@+id/categoryStatsContainer"
-                                    android:layout_width="match_parent"
-                                    android:layout_height="wrap_content"
-                                    android:layout_marginTop="16dp"
-                                    android:orientation="vertical"
-                                    android:visibility="gone">
-
-                                    <TextView
-                                        android:layout_width="match_parent"
-                                        android:layout_height="wrap_content"
-                                        android:text="Category Breakdown"
-                                        android:textAppearance="?attr/textAppearanceSubtitle1"
-                                        android:textStyle="bold" />
-                                </LinearLayout>
+                                <ImageView
+                                    android:id="@+id/expandCollapseIcon"
+                                    android:layout_width="24dp"
+                                    android:layout_height="24dp"
+                                    android:contentDescription="Expand/Collapse"
+                                    android:src="@drawable/ic_expand_more" />
                             </LinearLayout>
-                        </com.google.android.material.card.MaterialCardView>
 
-                    </androidx.constraintlayout.widget.ConstraintLayout>
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="16dp"
+                                android:orientation="vertical">
 
-                    <androidx.compose.ui.platform.ComposeView
-                        android:id="@+id/statistics_compose_view"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginHorizontal="18dp"
-                        android:layout_marginTop="16dp" />  <TextView
+                                <TextView
+                                    android:id="@+id/maxExpenseText"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:textAppearance="?attr/textAppearanceBody1"
+                                    tools:text="Max Expense: ₹1500.00" />
+
+                                <TextView
+                                    android:id="@+id/minExpenseText"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="8dp"
+                                    android:textAppearance="?attr/textAppearanceBody1"
+                                    tools:text="Min Expense: ₹50.00" />
+                            </LinearLayout>
+
+                            <LinearLayout
+                                android:id="@+id/categoryStatsContainer"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="16dp"
+                                android:orientation="vertical"
+                                android:visibility="gone">
+
+                                <TextView
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:text="Category Breakdown"
+                                    android:textAppearance="?attr/textAppearanceSubtitle1"
+                                    android:textStyle="bold" />
+                            </LinearLayout>
+                        </LinearLayout>
+                    </com.google.android.material.card.MaterialCardView>
+                </androidx.constraintlayout.widget.ConstraintLayout>
+
+                <androidx.compose.ui.platform.ComposeView
+                    android:id="@+id/statistics_compose_view"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_marginHorizontal="18dp"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginBottom="8dp"
+                    android:layout_weight="1" />
+
+                <TextView
                     android:id="@+id/noTransactionsMessage"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:gravity="center"
-                    android:padding="32dp"
+                    android:padding="16dp"
                     android:text="No transactions yet"
                     android:textSize="16sp"
-                    android:visibility="gone" />
+                    android:visibility="gone"
+                    tools:visibility="visible" />
 
-                    <Button
-                        android:id="@+id/testSmsButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="center"
-                        android:layout_marginVertical="20dp"
-                        android:layout_marginTop="16dp"
-                        android:backgroundTint="@color/colorAccent"
-                        android:elevation="4dp"
-                        android:padding="12dp"
-                        android:text="Test SMS Detection"
-                        android:textColor="@android:color/white" />
-                </LinearLayout>
-            </androidx.core.widget.NestedScrollView>
+                <Button
+                    android:id="@+id/testSmsButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginBottom="16dp"
+                    android:backgroundTint="@color/colorAccent"
+                    android:elevation="4dp"
+                    android:padding="12dp"
+                    android:text="Test SMS Detection"
+                    android:textColor="@android:color/white" />
+
+            </LinearLayout>
         </LinearLayout>
 
         <com.google.android.material.floatingactionbutton.FloatingActionButton

@@ -1,23 +1,36 @@
 package com.example.financetracker.viewmodel
 
+import android.app.Application
 import android.content.Context
 import android.util.Log
-import androidx.lifecycle.*
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.asLiveData
+import androidx.lifecycle.viewModelScope
 import com.example.financetracker.database.TransactionDatabase
+import com.example.financetracker.database.entity.Merchant
 import com.example.financetracker.database.entity.Transaction
+import com.example.financetracker.repository.TransactionRepository
 import com.example.financetracker.utils.GuestUserManager
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.util.Calendar
-import android.app.Application
-import com.example.financetracker.database.entity.Merchant
-import com.example.financetracker.repository.TransactionRepository
 import kotlinx.coroutines.tasks.await
+import java.util.Calendar
 
 data class CategoryStatistics(
     val maxExpense: Double,
@@ -38,6 +51,7 @@ class TransactionViewModel(
 ) : AndroidViewModel(application) {
 
     private val transactionDao = database.transactionDao()
+    private val categoryDao = database.categoryDao()
     private val TAG = "TransactionViewModel"
     private val repository: TransactionRepository =
         TransactionRepository(transactionDao, application)
@@ -45,6 +59,35 @@ class TransactionViewModel(
     // Loading state
     private val _loading = MutableLiveData<Boolean>()
     val loading: LiveData<Boolean> = _loading
+
+    val categoryNames: StateFlow<List<String>> =
+    // Get the user ID flow (or handle null appropriately)
+        // For simplicity, assuming direct access or a helper that provides it
+        flow { emit(getCurrentUserId()) } // Replace with your actual user ID source/flow
+            .flatMapLatest { userId ->
+                // Get categories for the user (or defaults if needed)
+                categoryDao.getAllCategories(userId) // Observe the DAO's Flow
+            }
+            .map { categoryList ->
+                // Map the Category objects to just their names
+                categoryList.map { it.name }.distinct().sorted() // Get distinct names and sort
+            }
+            .catch { e ->
+                Log.e(TAG, "Error fetching category names", e)
+                emit(emptyList()) // Emit empty list on error
+            }
+            // Convert Flow to StateFlow for easy observation in UI
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5000), // Keep subscribed 5s after last observer
+                initialValue = emptyList() // Initial value
+            )
+
+    private fun getCurrentUserId(): String? {
+        val auth = FirebaseAuth.getInstance()
+        return auth.currentUser?.uid
+        // return auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(getApplication()) // If guest needed
+    }
 
     // Error message
     private val _errorMessage = MutableLiveData<String>()
@@ -88,6 +131,21 @@ class TransactionViewModel(
         } catch (e: Exception) {
             Log.e("TransactionViewModel", "Error loading initial data", e)
             _errorMessage.postValue("Error loading initial data: ${e.message}")
+        }
+    }
+
+    fun updateCategoryColor(categoryId: Int, colorHex: String?) {
+        viewModelScope.launch(Dispatchers.IO) { // Use IO dispatcher for DB operations
+            try {
+                categoryDao.updateCategoryColor(categoryId, colorHex) // Call DAO method
+                Log.d(TAG, "Updated color for category $categoryId to $colorHex")
+                // The Flow observed in CategoriesFragment should automatically update the list UI.
+                // The Flow observed in StatisticsViewModel should automatically update the color map.
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating category color for ID $categoryId", e)
+                // Post error message to be observed by UI
+                _errorMessage.postValue("Failed to update category color.")
+            }
         }
     }
 

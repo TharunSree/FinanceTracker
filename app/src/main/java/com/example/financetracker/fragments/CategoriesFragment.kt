@@ -10,6 +10,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels // Use KTX delegate
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -17,13 +18,19 @@ import com.example.financetracker.R
 import com.example.financetracker.adapter.CategoryAdapter
 import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.database.entity.Category
+import com.example.financetracker.ui.screens.ChartColors // Import ChartColors
 import com.example.financetracker.utils.CategoryUtils
+import com.example.financetracker.viewmodel.TransactionViewModel // Import ViewModel
+import com.example.financetracker.viewmodel.parseColor // Import parseColor
+import com.github.dhaval2404.colorpicker.ColorPickerDialog // Import Color Picker
+import com.github.dhaval2404.colorpicker.model.ColorShape // Import Color Shape
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import androidx.compose.ui.graphics.toArgb
 
 class CategoriesFragment : Fragment() {
 
@@ -35,6 +42,13 @@ class CategoriesFragment : Fragment() {
     private lateinit var fab: FloatingActionButton
     private lateinit var emptyView: TextView
     private val TAG = "CategoriesFragment"
+
+    private val transactionViewModel: TransactionViewModel by viewModels {
+        TransactionViewModel.Factory(
+            TransactionDatabase.getDatabase(requireActivity().applicationContext),
+            requireActivity().application
+        )
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -49,67 +63,64 @@ class CategoriesFragment : Fragment() {
 
         try {
             Log.d(TAG, "Initializing CategoriesFragment")
-            database = TransactionDatabase.getDatabase(requireContext())
+            // Database instance might not be needed directly if ViewModel handles all DB access
+            // database = TransactionDatabase.getDatabase(requireContext())
 
             recyclerView = view.findViewById(R.id.categoriesRecyclerView)
             recyclerView.layoutManager = LinearLayoutManager(requireContext())
 
-            try {
-                emptyView = view.findViewById(R.id.emptyCategoriesText)
-            } catch (e: Exception) {
-                Log.e(TAG, "Empty view not found", e)
-            }
+            try { emptyView = view.findViewById(R.id.emptyCategoriesText) }
+            catch (e: Exception) { Log.e(TAG, "Empty view not found", e) }
 
-            val userId = auth.currentUser?.uid ?: "guest_user"
-            Log.d(TAG, "User ID: $userId")
+            val userId = auth.currentUser?.uid // Get userId or handle null case
 
+            // --- Initialize Adapter with all listeners ---
             categoryAdapter = CategoryAdapter(
-                onEdit = { category -> showEditCategoryDialog(category) },
-                onDelete = { category -> deleteCategory(category) }
+                onEditClick = { category -> showEditCategoryDialog(category) },
+                onDeleteClick = { category -> deleteCategory(category) },
+                onColorAreaClick = { category -> showColorPicker(category) } // Add color click handler
             )
+            // --- End Adapter Initialization ---
 
             recyclerView.adapter = categoryAdapter
 
-            fab = requireActivity().findViewById(R.id.addCategoryFab)
-            fab.visibility = View.VISIBLE
-            fab.setOnClickListener {
-                showAddCategoryDialog()
+            // Setup FAB (ensure ID exists in Activity layout hosting this fragment)
+            try {
+                fab = requireActivity().findViewById(R.id.addCategoryFab)
+                fab.visibility = View.VISIBLE // Make sure FAB is visible when this fragment is shown
+                fab.setOnClickListener { showAddCategoryDialog() }
+            } catch (e: Exception) {
+                Log.e(TAG, "Could not find addCategoryFab in Activity layout", e)
             }
 
-            // Start observing categories
             observeCategories(userId)
 
         } catch (e: Exception) {
             Log.e(TAG, "Error in onViewCreated", e)
-            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Error setting up categories: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun observeCategories(userId: String?) {
+        // Use the database instance from the ViewModel's factory or inject ViewModel directly
+        val dao = TransactionDatabase.getDatabase(requireContext()).categoryDao()
         lifecycleScope.launch {
-            try {
-                // Just observe the categories - no initialization here
-                database.categoryDao().getAllCategories(userId)
-                    .catch { e ->
-                        Log.e(TAG, "Error loading categories", e)
-                        context?.let {
-                            Toast.makeText(it, "Error loading categories", Toast.LENGTH_SHORT).show()
-                        }
+            dao.getAllCategories(userId)
+                .catch { e -> Log.e(TAG, "Error loading categories", e) }
+                .collect { categories ->
+                    Log.d(TAG, "Observed ${categories.size} categories")
+                    categoryAdapter.submitList(categories) // Update adapter
+                    if (::emptyView.isInitialized) {
+                        emptyView.visibility = if (categories.isEmpty()) View.VISIBLE else View.GONE
                     }
-                    .collect { categories ->
-                        Log.d(TAG, "Observed ${categories.size} categories")
-                        categoryAdapter.submitList(categories)
-
-                        if (::emptyView.isInitialized) {
-                            emptyView.visibility = if (categories.isEmpty()) View.VISIBLE else View.GONE
-                        }
+                    // Check for initial population if needed (moved from loadCategories)
+                    if (categories.isEmpty() && userId != null) {
+                        Log.d(TAG, "No categories found, attempting to add defaults.")
+                        // Consider calling a ViewModel function instead of CategoryUtils directly
+                        CategoryUtils.addDefaultCategories(requireContext(), userId)
+                        // Flow should re-emit automatically after adding defaults
                     }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in observeCategories", e)
-                context?.let {
-                    Toast.makeText(it, "Error observing categories: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
-            }
         }
     }
 
@@ -153,12 +164,39 @@ class CategoriesFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        fab.visibility = View.VISIBLE
+        try { if(::fab.isInitialized) fab.visibility = View.VISIBLE } catch (e: Exception) {Log.e(TAG, "FAB error onResume", e)}
     }
 
     override fun onPause() {
         super.onPause()
-        fab.visibility = View.GONE
+        try { if(::fab.isInitialized) fab.visibility = View.GONE } catch (e: Exception) {Log.e(TAG, "FAB error onPause", e)}
+    }
+
+    // --- Function to show Color Picker ---
+    private fun showColorPicker(category: Category) {
+        val currentHexColor = category.colorHex
+        // Parse current color or get default for picker initial state
+        val defaultColorInt = try {
+            if (!currentHexColor.isNullOrBlank()) {
+                android.graphics.Color.parseColor(currentHexColor)
+            } else {
+                ChartColors.getDefaultColorByName(category.name).toArgb() // Use default
+            }
+        } catch (e: Exception) { android.graphics.Color.GRAY }
+
+        ColorPickerDialog
+            .Builder(requireContext())
+            .setTitle("Pick Color for ${category.name}")
+            .setColorShape(ColorShape.SQAURE) // Or CIRCLE
+            .setDefaultColor(defaultColorInt) // Set current/default color
+            .setColorListener { colorInt, colorHex -> // Use the listener that gives both Int and Hex
+                Log.d(TAG, "Color selected: $colorHex for category ID ${category.id}")
+                // Call ViewModel to update the color in the database
+                transactionViewModel.updateCategoryColor(category.id, colorHex) // Pass hex string
+            }
+            .setNegativeButton("Cancel")
+            // .setPositiveButton("Save") // Listener above handles save
+            .show()
     }
 
     private fun showAddCategoryDialog() {

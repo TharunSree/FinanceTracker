@@ -1,22 +1,31 @@
+# gradle/libs.versions.toml
+
 [versions]
-agp = "8.8.2"
+agp = "8.8.2" # Or your AGP version
 firebaseAuth = "23.2.0"
 firebaseFirestore = "25.1.3"
-kotlin = "2.0.0"
-coreKtx = "1.15.0"
+kotlin = "2.1.10" # Or your Kotlin version
+coreKtx = "1.15.0" # Or your version
 junit = "4.13.2"
 junitVersion = "1.2.1"
 espressoCore = "3.6.1"
-lifecycleRuntimeKtx = "2.8.7"
-activityCompose = "1.10.1"
-composeBom = "2025.03.01"
-recyclerview = "1.4.0"
-room = "2.6.1"
-junitJunit = "4.13.2"
-material = "1.12.0"
+kotlinxSerializationJson = "1.6.3"
+lifecycleRuntimeKtx = "2.8.7" # Or your version
+activityCompose = "1.10.1" # Or your version
+composeBom = "2025.03.01" # Check latest version (e.g., "2024.05.00")
+recyclerview = "1.4.0" # Or your version
+room = "2.6.1" # Keep consistent
+material = "1.12.0" # Or your version
+# Add Firebase BOM version
+firebaseBomVersion = "33.12.0" # Or latest version
+coroutines = "1.10.1"
+# Change Dhaval Color Picker version
+dhavalColorpickerVersion = "2.3"
+
 
 [libraries]
-androidx-databinding = "androidx.databinding:databinding-runtime:8.9.1"
+# Keep existing androidx, github-madrapps, lifecycle, coroutines, testing, compose, etc. aliases...
+androidx-databinding = "androidx.databinding:databinding-runtime:8.9.1" # Version might depend on AGP
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
@@ -24,20 +33,31 @@ androidx-appcompat = "androidx.appcompat:appcompat:1.7.0"
 androidx-constraintlayout = "androidx.constraintlayout:constraintlayout:2.2.1"
 github-madrapps = "com.github.madrapps:plot:0.1.1"
 
-# Lifecycle (ViewModel and LiveData)
+# --- Corrected Color Picker Alias ---
+github-dhaval = { group = "com.github.dhaval2404", name = "colorpicker", version.ref = "dhavalColorpickerVersion" }
+
+# Lifecycle
 androidx-lifecycle-viewmodel = "androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7"
 androidx-lifecycle-livedata = "androidx.lifecycle:lifecycle-livedata-ktx:2.8.7"
 
 # Coroutines
-firebase-auth = { module = "com.google.firebase:firebase-auth", version.ref = "firebaseAuth" }
-firebase-firestore = { module = "com.google.firebase:firebase-firestore", version.ref = "firebaseFirestore" }
-kotlinx-coroutines-android = "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
-kotlinx-coroutines-core = "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
+kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+
+# Core & Testing Aliases (Looks OK from your file)
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
+
+# --- Add Firebase BOM Alias ---
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBomVersion"}
+# --- Keep individual Firebase aliases (versions will be inferred from BOM) ---
+firebase-auth = { module = "com.google.firebase:firebase-auth-ktx" } # Remove explicit version if using BOM
+firebase-firestore = { module = "com.google.firebase:firebase-firestore-ktx" } # Remove explicit version if using BOM
+
+# Compose Aliases (Looks OK from your file)
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-ui = { group = "androidx.compose.ui", name = "ui" }
@@ -47,27 +67,28 @@ androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-toolin
 androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
+
+# Other Aliases (Looks OK from your file)
 androidx-recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerview" }
 androidx-fragment = "androidx.fragment:fragment-ktx:1.8.6"
 google-gson = "com.google.code.gson:gson:2.10.1"
-junit-junit = { group = "junit", name = "junit", version.ref = "junitJunit" }
+junit-junit = { group = "junit", name = "junit", version.ref = "junit" } # Redundant with 'junit' alias? Check if needed.
+kotlinx-serialization-json-v130 = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 smart-reply = 'com.google.mlkit:smart-reply:17.0.4'
 entity-extraction = 'com.google.mlkit:entity-extraction:16.0.0-beta5'
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 google-gemini = "com.google.ai.client.generativeai:generativeai:0.9.0"
-kotlinx-serialization = "org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1"
-androidx-preference =  "androidx.preference:preference:1.2.1"
+kotlinx-serialization = "org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3"
+androidx-preference = "androidx.preference:preference-ktx:1.2.1" # Changed to ktx version
 
 [plugins]
+# Keep existing plugins...
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-kapt = { id = "kotlin-kapt" }
-kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version = "1.9.0" }
-kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version = "1.8.10" }
-android-library = { id = "com.android.library", version = "8.1.4" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version = "1.9.0" } # Use version.ref="kotlin"?
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" } # Use version.ref="kotlin"?
+android-library = { id = "com.android.library", version = "8.1.4" } # Use version.ref="agp"?
 androidx-room = { id = "androidx.room", version.ref = "room" }
 google-services = { id = "com.google.gms.google-services", version = "4.4.2" }
-
-
-
