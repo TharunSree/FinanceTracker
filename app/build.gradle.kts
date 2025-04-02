@@ -114,6 +114,7 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4) // Uses alias
     debugImplementation(libs.androidx.ui.tooling) // Uses alias
     debugImplementation(libs.androidx.ui.test.manifest) // Uses alias
+    implementation(libs.mpandroidchart)
 
     // --- Gemini / AI ---
     implementation(libs.google.gemini) // Uses alias

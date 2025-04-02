@@ -53,7 +53,7 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
             "SBIUPI", "SBI", "SBIPSG", "HDFCBK", "ICICI", "AXISBK", "PAYTM",
             "GPAY", "PHONEPE", "-SBIINB", "-HDFCBK", "-ICICI", "-AXISBK",
             "CENTBK", "BOIIND", "PNBSMS", "CANBNK", "UNIONB",
-            "KOTAKB", "INDUSB", "YESBNK",
+            "KOTAKB", "INDUSB", "YESBNK","JUSPAY", "IDFCBK",
 
             // Additional variations
             "HDFCBANK", "ICICIBK", "SBIBANK", "AXISBANK", "KOTAK",

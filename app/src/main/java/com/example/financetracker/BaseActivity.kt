@@ -12,6 +12,7 @@ import androidx.appcompat.widget.Toolbar
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import com.example.financetracker.database.TransactionDatabase
+import com.example.financetracker.utils.GuestUserManager
 import com.example.financetracker.viewmodel.TransactionViewModel
 import com.google.android.material.navigation.NavigationView
 import com.google.firebase.auth.FirebaseAuth
@@ -167,6 +168,8 @@ abstract class BaseActivity : AppCompatActivity(), NavigationView.OnNavigationIt
 
                 progressDialog.show()
 
+                GuestUserManager.setGuestMode(applicationContext, true)
+
                 // Use the application context to get ViewModel
                 val database = TransactionDatabase.getDatabase(applicationContext)
                 val viewModel = TransactionViewModel(database, application)
@@ -210,7 +213,7 @@ abstract class BaseActivity : AppCompatActivity(), NavigationView.OnNavigationIt
                             delay(300)
 
                             // Redirect to login
-                            val intent = Intent(this@BaseActivity, LoginActivity::class.java)
+                            val intent = Intent(this@BaseActivity, MainActivity::class.java)
                             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                             startActivity(intent)
                             finish()

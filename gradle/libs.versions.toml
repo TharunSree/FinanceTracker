@@ -13,6 +13,7 @@ kotlinxSerializationJson = "1.6.3"
 lifecycleRuntimeKtx = "2.8.7" # Or your version
 activityCompose = "1.10.1" # Or your version
 composeBom = "2025.03.01" # Check latest version (e.g., "2024.05.00")
+mpandroidchart = "v3.1.0"
 recyclerview = "1.4.0" # Or your version
 room = "2.6.1" # Keep consistent
 material = "1.12.0" # Or your version
@@ -74,6 +75,7 @@ androidx-fragment = "androidx.fragment:fragment-ktx:1.8.6"
 google-gson = "com.google.code.gson:gson:2.10.1"
 junit-junit = { group = "junit", name = "junit", version.ref = "junit" } # Redundant with 'junit' alias? Check if needed.
 kotlinx-serialization-json-v130 = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+mpandroidchart = { module = "com.github.PhilJay:MPAndroidChart", version.ref = "mpandroidchart" }
 smart-reply = 'com.google.mlkit:smart-reply:17.0.4'
 entity-extraction = 'com.google.mlkit:entity-extraction:16.0.0-beta5'
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }

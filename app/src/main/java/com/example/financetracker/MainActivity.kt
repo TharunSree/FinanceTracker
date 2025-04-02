@@ -299,71 +299,8 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
         debugCategories()
 
-        // Add this to your MainActivity's onCreate() method
-        findViewById<Button>(R.id.testSmsButton).setOnClickListener {
-            Toast.makeText(this, "Testing SMS processing with Gemini...", Toast.LENGTH_SHORT).show()
 
-            // Create test messages for different bank formats
-            val testMessages = listOf(
-                "Your account has been debited with Rs 1500.00 for Amazon payment on 28-03-2024. Transaction ID: HDFC12345.",
-                "INR 2,999.00 debited from A/c XX1234 at SWIGGY on 28-03-24",
-                "Rs.799.00 spent via Debit Card xx1234 at NETFLIX.COM on 28/03/2024"
-            )
 
-            // Test each message
-            lifecycleScope.launch {
-                try {
-                    val messageExtractor = MessageExtractor(this@MainActivity)
-
-                    testMessages.forEachIndexed { index, message ->
-                        Log.d("SMS_TEST", "Testing message ${index + 1}: $message")
-
-                        // Extract details using Gemini
-                        val details = messageExtractor.extractTransactionDetails(message)
-
-                        if (details != null) {
-                            Log.d("SMS_TEST", "Successfully extracted details: $details")
-
-                            // Create notification to show results
-                            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-                            val notification = NotificationCompat.Builder(this@MainActivity, "debug_channel")
-                                .setSmallIcon(R.drawable.ic_notification)
-                                .setContentTitle("Gemini Test #${index + 1}")
-                                .setContentText("Amount: ₹${details.amount}, Merchant: ${details.merchant}")
-                                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                                .build()
-
-                            notificationManager.notify(System.currentTimeMillis().toInt() + index, notification)
-
-                            // Show results in UI
-                            Toast.makeText(
-                                this@MainActivity,
-                                "Test ${index + 1} Success!\nAmount: ₹${details.amount}\nMerchant: ${details.merchant}",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        } else {
-                            Log.e("SMS_TEST", "Failed to extract details from test message $index")
-                            Toast.makeText(
-                                this@MainActivity,
-                                "Test ${index + 1} Failed - No details extracted",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-
-                        // Add delay between tests
-                        kotlinx.coroutines.delay(2000)
-                    }
-                } catch (e: Exception) {
-                    Log.e("SMS_TEST", "Error in test", e)
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Error during test: ${e.message}",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
-        }
 
         // Initialize Firebase Auth and Firestore with logging
         try {
@@ -410,17 +347,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
         findViewById<NavigationView>(R.id.nav_view).setNavigationItemSelectedListener(this)
 
-        // Set up the Add Transaction FAB
-        findViewById<FloatingActionButton>(R.id.addTransactionButton).setOnClickListener {
-            if (auth.currentUser != null) {
-                val intent = Intent(this, AddTransactionActivity::class.java)
-                addTransactionLauncher.launch(intent)
-            } else {
-                Toast.makeText(this, "Please log in to add transactions", Toast.LENGTH_SHORT).show()
-                val intent = Intent(this, LoginActivity::class.java)
-                startActivity(intent)
-            }
-        }
         // Set the current user's name in the navigation drawer
         updateNavHeader()
 
@@ -535,9 +461,9 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         }
 
         // Setup SMS test button
-        findViewById<Button>(R.id.testSmsButton).setOnClickListener {
+
             // Your existing SMS test implementation
-        }
+
     }
 
     private fun setupDrawerToggle() {
@@ -1056,7 +982,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             showLogoutConfirmationDialog()
         } else {
             // User is not signed in, redirect to login activity
-            val intent = Intent(this, LoginActivity::class.java)
+            val intent = Intent(this, MainActivity::class.java)
             startActivity(intent)
         }
     }
