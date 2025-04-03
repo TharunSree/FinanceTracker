@@ -61,6 +61,8 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
         }
     }
 
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityTransactionsBinding.inflate(layoutInflater)
@@ -232,8 +234,9 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
     }
 
     private fun formatDate(timestamp: Long): String {
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        return dateFormat.format(timestamp)
+        // Use a format that includes time
+        val displayFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) // Example format
+        return displayFormat.format(timestamp)
     }
 
     private fun refreshTransactions() {

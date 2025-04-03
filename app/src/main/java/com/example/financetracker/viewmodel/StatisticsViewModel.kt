@@ -39,11 +39,13 @@ class StatisticsViewModel(
     private val application: Application
 ) : ViewModel() {
 
-    data class DailySpending(
-        val date: Date,
+    data class TimePointSpending(
+        val timePointDate: Date, // Holds the specific hour (or day/month for other periods)
         val category: String,
         val amount: Double
     )
+
+    private val TAG = "StatisticsViewModel"
 
     private val _selectedPeriod = MutableStateFlow(TimePeriod.WEEK)
     val selectedPeriod: StateFlow<TimePeriod> = _selectedPeriod.asStateFlow()
@@ -56,8 +58,8 @@ class StatisticsViewModel(
     private val _transactionCount = MutableStateFlow(0)
     val transactionCount: StateFlow<Int> = _transactionCount.asStateFlow()
 
-    private val _dailySpendingData = MutableStateFlow<List<DailySpending>>(emptyList())
-    val dailySpendingData: StateFlow<List<DailySpending>> = _dailySpendingData.asStateFlow()
+    private val _spendingDataByTimePoint = MutableStateFlow<List<TimePointSpending>>(emptyList())
+    val spendingDataByTimePoint: StateFlow<List<TimePointSpending>> = _spendingDataByTimePoint.asStateFlow()
 
     private val _categoryColorsMap = MutableStateFlow<Map<String, Color>>(emptyMap())
     val categoryColorsMap: StateFlow<Map<String, Color>> = _categoryColorsMap.asStateFlow()
@@ -78,11 +80,13 @@ class StatisticsViewModel(
 
     private fun loadStatistics() {
         viewModelScope.launch {
-            val transactions = getTransactionsForPeriod(_selectedPeriod.value)
+            val currentPeriod = _selectedPeriod.value
+            val transactions = getTransactionsForPeriod(currentPeriod)
             val stats = calculateTransactionStatistics(transactions)
             _transactionStatistics.value = stats
             _transactionCount.value = transactions.size
-            _dailySpendingData.value = calculateDailySpending(transactions)
+            // Call the correct calculation based on period
+            _spendingDataByTimePoint.value = calculateSpendingByTimePoint(transactions, currentPeriod)
         }
     }
 
@@ -149,23 +153,59 @@ class StatisticsViewModel(
         )
     }
 
-    private fun calculateDailySpending(transactions: List<Transaction>): List<DailySpending> {
-        val dailySpendingMap = mutableMapOf<Date, MutableMap<String, Double>>()
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    private fun calculateSpendingByTimePoint(
+        transactions: List<Transaction>,
+        period: TimePeriod
+    ): List<TimePointSpending> {
+        // Use a temporary map where the Key is the normalized Date (hour for Today, day for Week/Month, etc.)
+        val spendingMap = mutableMapOf<Date, MutableMap<String, Double>>()
+        val calendar = Calendar.getInstance()
 
         transactions.forEach { transaction ->
-            val date = dateFormat.parse(dateFormat.format(Date(transaction.date))) ?: return@forEach
-            val categorySpending = dailySpendingMap.getOrPut(date) { mutableMapOf() }
-            categorySpending[transaction.category] = categorySpending.getOrDefault(transaction.category, 0.0) + transaction.amount
+            // Normalize the date based on the selected period
+            calendar.timeInMillis = transaction.date
+            val timePointDate = when (period) {
+                TimePeriod.TODAY -> {
+                    // Normalize to the start of the hour
+                    calendar.clear(Calendar.MINUTE)
+                    calendar.clear(Calendar.SECOND)
+                    calendar.clear(Calendar.MILLISECOND)
+                    calendar.time
+                }
+                TimePeriod.WEEK, TimePeriod.MONTH -> {
+                    // Normalize to the start of the day
+                    calendar.clear(Calendar.HOUR_OF_DAY)
+                    calendar.clear(Calendar.MINUTE)
+                    calendar.clear(Calendar.SECOND)
+                    calendar.clear(Calendar.MILLISECOND)
+                    calendar.time
+                }
+                TimePeriod.ALL -> {
+                    // Normalize to the start of the month
+                    calendar.set(Calendar.DAY_OF_MONTH, 1)
+                    calendar.clear(Calendar.HOUR_OF_DAY)
+                    calendar.clear(Calendar.MINUTE)
+                    calendar.clear(Calendar.SECOND)
+                    calendar.clear(Calendar.MILLISECOND)
+                    calendar.time
+                }
+            }
+
+            // Aggregate spending per category for that specific time point
+            val categorySpending = spendingMap.getOrPut(timePointDate) { mutableMapOf() }
+            categorySpending[transaction.category] =
+                categorySpending.getOrDefault(transaction.category, 0.0) + transaction.amount
         }
 
-        val dailySpendingList = mutableListOf<DailySpending>()
-        dailySpendingMap.forEach { (date, categorySpending) ->
-            categorySpending.forEach { (category, amount) ->
-                dailySpendingList.add(DailySpending(date, category, amount))
+        // Flatten the map into the final list structure
+        val spendingList = mutableListOf<TimePointSpending>()
+        spendingMap.forEach { (timePoint, categorySpendingMap) ->
+            categorySpendingMap.forEach { (category, amount) ->
+                spendingList.add(TimePointSpending(timePoint, category, amount))
             }
         }
-        return dailySpendingList
+        Log.d(TAG, "Calculated ${spendingList.size} spending points for period $period")
+        return spendingList
     }
 
     private fun loadCategoryColors() {

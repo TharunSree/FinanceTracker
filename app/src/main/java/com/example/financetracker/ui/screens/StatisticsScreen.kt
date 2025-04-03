@@ -14,6 +14,7 @@ import kotlin.math.pow
 
 // Other necessary imports
 import android.graphics.Paint
+import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -72,6 +73,7 @@ import java.util.concurrent.TimeUnit // Added import (potentially useful)
 
 // --- End Imports ---
 
+private const val SCREEN_TAG = "StatisticsScreen" // Tag for logging
 
 // --- ChartColors object definition ---
 object ChartColors {
@@ -272,89 +274,101 @@ private fun getTimePointKey(date: Date, period: StatisticsViewModel.TimePeriod):
 }
 
 private fun generateTimePoints(
-    data: List<StatisticsViewModel.DailySpending>,
+    data: List<StatisticsViewModel.TimePointSpending>,
     period: StatisticsViewModel.TimePeriod
 ): List<TimePointInfo> {
     val locale = Locale.getDefault()
     return when (period) {
         StatisticsViewModel.TimePeriod.TODAY -> {
-            // Get all unique hours present in data, sorted
-            data.map { getTimePointKey(it.date, period) }
-                .distinctBy { (it as TimePointKey.Hour).date.time }
-                .sortedBy { it.getComparableValue() }
-                .map { key ->
-                    val format = SimpleDateFormat("HH:mm", locale)
-                    TimePointInfo(key, format.format((key as TimePointKey.Hour).date))
-                }
-        }
-
-        StatisticsViewModel.TimePeriod.WEEK -> {
-            // Fixed days Mon-Sun using DateFormatSymbols
-            val symbols = DateFormatSymbols.getInstance(locale)
-            // shortWeekdays array: index 0 is empty, 1 is Sunday, 2 is Monday...
-            val shortWeekdays = symbols.shortWeekdays
-
-            // Map our desired index (Mon=0...Sun=6) to the correct name from shortWeekdays
-            val dayIndexToName = (0..6).associateWith { index ->
-                // Map our Mon=0 index to the Calendar constant (e.g., Calendar.MONDAY = 2)
-                val calendarDayConstant = when (index) {
-                    0 -> Calendar.MONDAY
-                    1 -> Calendar.TUESDAY
-                    2 -> Calendar.WEDNESDAY
-                    3 -> Calendar.THURSDAY
-                    4 -> Calendar.FRIDAY
-                    5 -> Calendar.SATURDAY
-                    6 -> Calendar.SUNDAY
-                    else -> Calendar.MONDAY // Fallback
-                }
-                // Use the Calendar constant as the index into the 1-based shortWeekdays array
-                if (calendarDayConstant >= 0 && calendarDayConstant < shortWeekdays.size) {
-                    shortWeekdays[calendarDayConstant]?.takeIf { it.isNotEmpty() }
-                        ?: "??" // Use name if valid and not empty
-                } else {
-                    "??" // Fallback if index is out of bounds
-                }
+            if (data.isEmpty()) {
+                Log.d(SCREEN_TAG, "generateTimePoints(TODAY): No data, returning empty list")
+                return emptyList()
             }
 
+            val datesInData = data.map { it.timePointDate }
+            val minDate = datesInData.minByOrNull { it.time } ?: return emptyList()
+            val maxDate = datesInData.maxByOrNull { it.time } ?: return emptyList()
+
+            Log.d(SCREEN_TAG, "generateTimePoints(TODAY): MinDate=${Date(minDate.time)}, MaxDate=${Date(maxDate.time)}")
+
+            val calendar = Calendar.getInstance()
+            calendar.time = minDate
+            val startHourMillis = calendar.timeInMillis
+
+            calendar.time = maxDate
+            val endHourMillis = calendar.timeInMillis
+
+            val timePoints = mutableListOf<TimePointInfo>()
+            val currentHourCal = Calendar.getInstance().apply { timeInMillis = startHourMillis }
+            val format = SimpleDateFormat("HH:mm", locale)
+
+            Log.d(SCREEN_TAG, "generateTimePoints(TODAY): Generating hours from $startHourMillis to $endHourMillis")
+
+            while (currentHourCal.timeInMillis <= endHourMillis) {
+                val currentHourDate = currentHourCal.time
+                val key = getTimePointKey(currentHourDate, StatisticsViewModel.TimePeriod.TODAY)
+                val label = format.format(currentHourDate) // Format the date directly
+                timePoints.add(TimePointInfo(key, label))
+                currentHourCal.add(Calendar.HOUR_OF_DAY, 1)
+            }
+
+            // --- CORRECTED Single Hour Case ---
+            if (timePoints.isEmpty() && startHourMillis == endHourMillis) {
+                Log.d(SCREEN_TAG, "generateTimePoints(TODAY): Handling single hour case")
+                val key = getTimePointKey(Date(startHourMillis), StatisticsViewModel.TimePeriod.TODAY)
+                // Safely check the type and access the date
+                if (key is TimePointKey.Hour) {
+                    val label = format.format(key.date) // Now safe to access .date
+                    timePoints.add(TimePointInfo(key, label))
+                } else {
+                    // Fallback or error if the key type is unexpectedly different
+                    Log.e(SCREEN_TAG, "generateTimePoints(TODAY): Expected Hour key but got $key for single hour")
+                    // Optionally add a default point:
+                    // timePoints.add(TimePointInfo(key, format.format(Date(startHourMillis))))
+                }
+            }
+            // --- End Correction ---
+
+            Log.d(SCREEN_TAG, "generateTimePoints(TODAY): Final generated labels: ${timePoints.joinToString { it.label }}")
+            timePoints
+        }
+        // ... (WEEK, MONTH, ALL cases remain the same as before) ...
+        StatisticsViewModel.TimePeriod.WEEK -> {
+            val symbols = DateFormatSymbols.getInstance(locale)
+            val shortWeekdays = symbols.shortWeekdays
+            val dayIndexToName = (0..6).associateWith { index ->
+                val calendarDayConstant = when (index) {
+                    0 -> Calendar.MONDAY; 1 -> Calendar.TUESDAY; 2 -> Calendar.WEDNESDAY;
+                    3 -> Calendar.THURSDAY; 4 -> Calendar.FRIDAY; 5 -> Calendar.SATURDAY;
+                    6 -> Calendar.SUNDAY; else -> Calendar.MONDAY
+                }
+                if (calendarDayConstant >= 0 && calendarDayConstant < shortWeekdays.size) {
+                    shortWeekdays[calendarDayConstant]?.takeIf { it.isNotEmpty() } ?: "??"
+                } else { "??" }
+            }
             (0..6).map { index ->
                 TimePointInfo(TimePointKey.DayOfWeek(index), dayIndexToName[index] ?: "??")
             }
         }
-
         StatisticsViewModel.TimePeriod.MONTH -> {
-            // --- MONTH Labels Changed ---
             if (data.isEmpty()) {
-                // Generate default labels if no data for the month
-                val labels = listOf("7", "14", "21", "28", "End")
+                val labels = listOf("1","7", "14", "21", "28", "End")
                 return (0..4).map { index ->
                     TimePointInfo(TimePointKey.WeekOfMonth(index), labels[index])
                 }
             }
-
-            // Determine the month and year from the first transaction date to get the correct last day
             val calendar = Calendar.getInstance().apply {
-                // Find the earliest date in the dataset for this period to define the month
-                time = data.minByOrNull { it.date.time }?.date ?: data.first().date
+                time = data.minByOrNull { it.timePointDate.time }?.timePointDate ?: data.first().timePointDate
             }
-            // Find the actual last day of that specific month
-            calendar.set(Calendar.DAY_OF_MONTH, 1) // Go to first day
-            calendar.add(Calendar.MONTH, 1)       // Go to first day of next month
-            calendar.add(Calendar.DAY_OF_MONTH, -1) // Go back one day to get last day of current month
+            calendar.set(Calendar.DAY_OF_MONTH, 1); calendar.add(Calendar.MONTH, 1); calendar.add(Calendar.DAY_OF_MONTH, -1)
             val lastDayOfMonth = calendar.get(Calendar.DAY_OF_MONTH)
-
-            // Create labels: "7", "14", "21", "28", "LastDay"
-            val labels = listOf("7", "14", "21", "28", lastDayOfMonth.toString())
-
-            // Create TimePointInfo using WeekOfMonth key but date labels
+            val labels = listOf("1", "7", "14", "21", "28", lastDayOfMonth.toString())
             (0..4).map { index ->
                 TimePointInfo(TimePointKey.WeekOfMonth(index), labels[index])
             }
-            // --- End MONTH Labels Change ---
         }
-
         StatisticsViewModel.TimePeriod.ALL -> {
-            // Get all unique months present in data, sorted
-            data.map { getTimePointKey(it.date, period) }
+            data.map { getTimePointKey(it.timePointDate, period) }
                 .distinctBy { (it as TimePointKey.MonthYear).date.time }
                 .sortedBy { it.getComparableValue() }
                 .map { key ->
@@ -367,67 +381,51 @@ private fun generateTimePoints(
 
 @Composable
 private fun rememberProcessedChartData(
-    data: List<StatisticsViewModel.DailySpending>,
+    data: List<StatisticsViewModel.TimePointSpending>,
     selectedPeriod: StatisticsViewModel.TimePeriod
 ): ProcessedChartData {
 
     return remember(data, selectedPeriod) {
+        // Use the raw spending data list directly
         if (data.isEmpty()) {
-            // Handle empty data case early
-            val timePoints = generateTimePoints(
-                emptyList(),
-                selectedPeriod
-            ) // Generate default points if possible (Week/Month)
+            val timePoints = generateTimePoints(emptyList(), selectedPeriod)
             val (niceAxisMax, yAxisTicks) = calculateNiceAxisValues(0.0, 5)
             return@remember ProcessedChartData(timePoints, emptyMap(), niceAxisMax, yAxisTicks)
         }
 
-        // 1. Generate Time Points for X-Axis
+        // 1. Generate Time Points based on the input data's time range
         val timePoints = generateTimePoints(data, selectedPeriod)
         if (timePoints.isEmpty()) {
-            // If still no time points (e.g., empty data for Today/All), return default
             val (niceAxisMax, yAxisTicks) = calculateNiceAxisValues(0.0, 5)
             return@remember ProcessedChartData(emptyList(), emptyMap(), niceAxisMax, yAxisTicks)
         }
 
+        // 2. Re-group data by Category -> TimePointKey -> Summed Amount using the keys from timePoints
+        // This aggregates data that might span multiple original transactions into the correct time point
+        val dataMap = mutableMapOf<String, MutableMap<TimePointKey, Double>>()
+        data.forEach { spending ->
+            // Find the correct TimePointKey based on the period
+            val key = getTimePointKey(spending.timePointDate, selectedPeriod)
+            val categoryMap = dataMap.getOrPut(spending.category) { mutableMapOf() }
+            categoryMap[key] = categoryMap.getOrDefault(key, 0.0) + spending.amount
+        }
 
-        // 2. Group Data by Category -> TimePointKey -> Summed Amount
-        val dataMap = data.groupBy { it.category }
-            .mapValues { (_, categoryData) ->
-                categoryData
-                    .groupBy { getTimePointKey(it.date, selectedPeriod) }
-                    .mapValues { entry -> entry.value.sumOf { it.amount } }
-                    // Ensure all defined time points exist for each category (with 0 if no data)
-                    .let { categoryTimeMap ->
-                        timePoints.associate { timePointInfo ->
-                            timePointInfo.key to (categoryTimeMap[timePointInfo.key] ?: 0.0)
-                        }
-                    }
-
-            }
-
-        // 3. Calculate Max Y value for axis scaling
-        val actualMaxAmount = when (selectedPeriod) {
-            // For BarChart (grouped), max is the sum of amounts at a single time point across categories
-            StatisticsViewModel.TimePeriod.TODAY -> {
-                timePoints.maxOfOrNull { timePointInfo ->
-                    dataMap.values.sumOf { categoryTimeMap ->
-                        categoryTimeMap[timePointInfo.key] ?: 0.0
-                    }
-                } ?: 0.0
-            }
-            // For LineChart (multiple lines), max is the highest single category amount at any time point
-            else -> {
-                dataMap.values.flatMap { it.values }.maxOrNull() ?: 0.0
+        // Ensure all defined time points exist for each category (with 0 if no data)
+        val finalDataMap = dataMap.mapValues { (_, categoryTimeMap) ->
+            timePoints.associate { timePointInfo ->
+                timePointInfo.key to (categoryTimeMap[timePointInfo.key] ?: 0.0)
             }
         }
 
-        // 4. Calculate Nice Y-Axis Ticks
+
+        // 3. Calculate Max Y value (use line chart logic)
+        val actualMaxAmount = finalDataMap.values.flatMap { it.values }.maxOrNull() ?: 0.0
         val (niceAxisMax, yAxisTicks) = calculateNiceAxisValues(actualMaxAmount, 5)
 
-        ProcessedChartData(timePoints, dataMap, niceAxisMax, yAxisTicks)
+        ProcessedChartData(timePoints, finalDataMap, niceAxisMax, yAxisTicks)
     }
 }
+
 
 // --- Main Statistics Screen Composable ---
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -436,7 +434,7 @@ fun StatisticsScreen(viewModel: StatisticsViewModel) { // Pass your ViewModel in
     // --- State Collection ---
     val selectedPeriod by viewModel.selectedPeriod.collectAsStateWithLifecycle()
     val transactionStatistics by viewModel.transactionStatistics.collectAsStateWithLifecycle()
-    val dailySpendingData by viewModel.dailySpendingData.collectAsStateWithLifecycle()
+    val dailySpendingData by viewModel.spendingDataByTimePoint.collectAsStateWithLifecycle()
     val transactionCount by viewModel.transactionCount.collectAsStateWithLifecycle()
     // Assuming ViewModel provides this map for user-assigned colors eventually
     val categoryColorsMap by viewModel.categoryColorsMap.collectAsStateWithLifecycle()
@@ -890,7 +888,7 @@ private fun setupLeftYAxis(
 // --- DailySpendingChartMP (Final Version) ---
 @Composable
 fun DailySpendingChartMP(
-    data: List<StatisticsViewModel.DailySpending>, // Raw data
+    data: List<StatisticsViewModel.TimePointSpending>, // Raw data
     selectedPeriod: StatisticsViewModel.TimePeriod,
     categoryColors: Map<String, Color>,
     modifier: Modifier = Modifier

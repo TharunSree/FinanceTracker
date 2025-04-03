@@ -36,7 +36,7 @@ class TransactionAdapter(
             amountTextView.text = "₹${transaction.amount}"
             // Convert Long to Date and then to String
             val date = Date(transaction.date)
-            val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+            val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
             dateTextView.text = dateFormat.format(date)
             categoryTextView.text = transaction.category
 

@@ -982,7 +982,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             showLogoutConfirmationDialog()
         } else {
             // User is not signed in, redirect to login activity
-            val intent = Intent(this, MainActivity::class.java)
+            val intent = Intent(this, LoginActivity::class.java)
             startActivity(intent)
         }
     }
