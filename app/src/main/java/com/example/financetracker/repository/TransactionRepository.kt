@@ -89,8 +89,12 @@ class TransactionRepository(
     }
 
     suspend fun getTransactionsByDateRange(startTime: Long, endTime: Long): List<Transaction> = withContext(Dispatchers.IO) {
-        val userId = getCurrentUserId()
-        transactionDao.getUserTransactionsByDateRange(startTime, endTime, userId)
+        val userId = getCurrentUserId() // This likely returns String?
+
+        // Check if the userId is null
+        transactionDao.getTransactionsByDateRange(startTime, endTime, userId)
+        // Now, regardless of whether userId is null or not, the block is guaranteed
+        // to evaluate to a List<Transaction> (either from the DAO or an empty list).
     }
 
     suspend fun getTransactionsByCategory(category: String): List<Transaction> = withContext(Dispatchers.IO) {
@@ -114,23 +118,27 @@ class TransactionRepository(
                 if (GuestUserManager.isGuestMode(userId)) return@withContext
 
                 // Create or get document reference
-                val docRef = if (transaction.documentId.isEmpty()) {
+                val docRef = if (transaction.documentId?.isEmpty() == true) {
                     firestore.collection("users").document(userId)
                         .collection("transactions").document()
                 } else {
-                    firestore.collection("users").document(userId)
-                        .collection("transactions").document(transaction.documentId)
+                    transaction.documentId?.let {
+                        firestore.collection("users").document(userId)
+                            .collection("transactions").document(it)
+                    }
                 }
 
                 // Update document ID if this is a new transaction
-                if (transaction.documentId.isEmpty()) {
-                    transaction.documentId = docRef.id
+                if (transaction.documentId?.isEmpty() == true) {
+                    if (docRef != null) {
+                        transaction.documentId = docRef.id
+                    }
                     // Update Room with the new document ID
                     transactionDao.updateTransaction(transaction)
                 }
 
                 // Store in Firestore
-                docRef.set(transaction).await()
+                docRef?.set(transaction)?.await()
             } catch (e: Exception) {
                 Log.e(TAG, "Error syncing transaction to Firestore", e)
                 _error.postValue("Failed to sync transaction to Firestore: ${e.message}")
@@ -151,7 +159,7 @@ class TransactionRepository(
                 _loading.postValue(true)
                 val transactions = transactionDao.getAllTransactions().first()
                 transactions.forEach { transaction ->
-                    if (transaction.documentId.isEmpty()) {
+                    if (transaction.documentId?.isEmpty() == true) {
                         try {
                             syncTransactionToFirestore(transaction)
                         } catch (e: Exception) {
@@ -185,10 +193,12 @@ class TransactionRepository(
 
                 // Smart merge with existing Room data
                 transactions.forEach { firestoreTransaction ->
-                    val existingTransaction = transactionDao.getTransactionByDocId(
-                        firestoreTransaction.documentId,
-                        userId
-                    )
+                    val existingTransaction = firestoreTransaction.documentId?.let {
+                        transactionDao.getTransactionByDocId(
+                            it,
+                            userId
+                        )
+                    }
 
                     if (existingTransaction == null) {
                         transactionDao.insertTransaction(firestoreTransaction)
@@ -214,7 +224,4 @@ class TransactionRepository(
         private const val TAG = "TransactionRepository"
     }
 
-    suspend fun getUserTransactionsByDateRange(startTime: Long, endTime: Long, userId: String): List<Transaction> = withContext(Dispatchers.IO) {
-        transactionDao.getUserTransactionsByDateRange(startTime, endTime, userId)
-    }
 }

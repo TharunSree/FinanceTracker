@@ -1,40 +1,28 @@
 package com.example.financetracker
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.provider.Telephony
-import android.telephony.SmsMessage
 import android.util.Log
-import androidx.core.app.NotificationCompat
-import com.example.financetracker.database.TransactionDatabase
-import com.example.financetracker.database.entity.Transaction
-import com.example.financetracker.utils.MessageExtractor
-import com.google.firebase.firestore.FirebaseFirestore
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
+// Removed unused imports: NotificationChannel, NotificationManager, PendingIntent,
+// SmsMessage, CoroutineScope, Dispatchers, SupervisorJob, FirebaseFirestore, etc.
+// Removed database and entity imports as they are not used here.
 
 class SmsBroadcastReceiver : BroadcastReceiver() {
 
-    // Use SupervisorJob to prevent cancellation of all coroutines if one fails
-    private val job = SupervisorJob()
-    private val coroutineScope = CoroutineScope(Dispatchers.IO + job)
-    private val firestore = FirebaseFirestore.getInstance()
-
     companion object {
         private const val TAG = "SmsBroadcastReceiver"
-        private const val TRANSACTION_CHANNEL_ID = "transaction_channel"
-        private const val DETAILS_CHANNEL_ID = "details_channel"
+        // Moved channel IDs to Service
 
-        // Add a static property to track receiver initialization
-        var isInitialized = false
+        // Define constants for intent extras (matching SmsProcessingService)
+        // Using strings as provided in the input code, but constants are recommended
+        const val EXTRA_SENDER = "sender"
+        const val EXTRA_MESSAGE = "message"
+        // const val EXTRA_TIMESTAMP = "timestamp" // Timestamp is no longer passed
 
+        // Regex patterns for filtering
         private val currencyPatterns = mapOf(
             "INR" to listOf(
                 Regex("""(?:Rs\.?|INR|₹)\s*([\d,]+\.?\d*)"""),
@@ -46,8 +34,10 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
             "USD" to listOf(Regex("""\$\s*([\d,]+\.?\d*)""")),
             "EUR" to listOf(Regex("""€\s*([\d,]+\.?\d*)""")),
             "GBP" to listOf(Regex("""£\s*([\d,]+\.?\d*)"""))
+            // Add other currencies as needed
         )
 
+        // List of known financial sender IDs or keywords
         private val financialSenders = listOf(
             // Main bank senders
             "SBIUPI", "SBI", "SBIPSG", "HDFCBK", "ICICI", "AXISBK", "PAYTM",
@@ -64,14 +54,14 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
             // UPI services
             "UPIBNK", "UPIPAY", "BHIMPAY", "RAZORPAY",
 
-            // Common variations with different prefixes
-            "AD-", "TM-", "DM-", "BZ-", "VM-", "VK-"
+            // Common variations with different prefixes (handle with contains)
+            "AD-", "TM-", "DM-", "BZ-", "VM-", "VK-" // Prefixes best handled by 'contains' in senderMatches
         )
     }
 
     override fun onReceive(context: Context?, intent: Intent?) {
         if (context == null || intent == null) {
-            Log.e(TAG, "Null context or intent")
+            Log.e(TAG, "Null context or intent in onReceive")
             return
         }
 
@@ -79,133 +69,103 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
             val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
 
             messages?.forEach { smsMessage ->
+                // Use displayOriginatingAddress for sender ID
                 val sender = smsMessage.displayOriginatingAddress
                 val messageBody = smsMessage.messageBody
+                // val timestamp = smsMessage.timestampMillis // Timestamp no longer passed
 
-                Log.d(TAG, "SMS from: $sender")
-                Log.d(TAG, "Message body: $messageBody")
+                if (sender == null || messageBody == null) {
+                    Log.w(TAG, "Received SMS with null sender or body.")
+                    return@forEach // Skip this message
+                }
 
+                Log.d(TAG, "SMS received. From: $sender")
+                // Log.v(TAG, "Message body: $messageBody") // Use verbose for full body
+
+                // Check if it's a financial message based on sender and content
                 if (isFinancialMessage(sender, messageBody)) {
-                    Log.d(TAG, "Financial message detected from sender: $sender")
-                    createNotificationChannels(context)
+                    Log.i(TAG, "Financial message detected from sender: $sender. Starting service.")
+                    // Removed notification channel creation from receiver
 
-                    // Only start the service, remove direct processing
+                    // Start the SmsProcessingService
                     val serviceIntent = Intent(context, SmsProcessingService::class.java).apply {
-                        putExtra("sender", sender)
-                        putExtra("message", messageBody)
+                        // Use the defined constants (or matching strings) for extras
+                        putExtra(EXTRA_SENDER, sender)
+                        putExtra(EXTRA_MESSAGE, messageBody)
+                        // putExtra(EXTRA_TIMESTAMP, timestamp) // Not passing timestamp anymore
                     }
 
+                    // Start service appropriately based on Android version
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         context.startForegroundService(serviceIntent)
                     } else {
                         context.startService(serviceIntent)
                     }
                 } else {
-                    Log.d(TAG, "Not a financial message from: $sender")
+                    Log.d(TAG, "Not identified as a financial message from: $sender. Skipping service start.")
                 }
             }
+        } else {
+            Log.d(TAG, "Received broadcast with non-SMS action: ${intent.action}")
         }
     }
 
+    // Checks if the message likely represents a financial transaction.
     private fun isFinancialMessage(sender: String, message: String): Boolean {
-        // Check if the sender is a known financial sender
+        // Check 1: Sender must match known financial institutions/services
         if (!senderMatches(sender)) {
-            Log.d(TAG, "Sender does not match financial senders: $sender")
+            // Log.d(TAG, "Sender '$sender' does not match known financial senders.")
             return false
         }
 
-        // Check if message contains amount pattern
+        // Check 2: Message must contain a recognizable amount pattern
         if (!hasAmount(message)) {
-            Log.d(TAG, "Message does not contain amount pattern")
+            // Log.d(TAG, "Message does not contain a recognizable amount pattern.")
             return false
         }
 
-        // Check if message contains debit keywords
+        // Check 3: Message should contain keywords indicating a transaction (debit focus)
         if (!isDebitTransaction(message)) {
-            Log.d(TAG, "Message does not contain debit keywords")
+            // Log.d(TAG, "Message does not contain debit-related keywords.")
             return false
         }
 
-        Log.d(TAG, "Message identified as financial message")
-        return true
+        Log.d(TAG, "Message from '$sender' identified as financial.")
+        return true // Passed all checks
     }
 
+    // Checks if the message contains any of the defined currency/amount patterns.
     private fun hasAmount(message: String): Boolean {
-        val hasAmount = currencyPatterns.values.flatten().any { pattern ->
+        return currencyPatterns.values.flatten().any { pattern ->
             pattern.find(message) != null
         }
-        Log.d(TAG, "Message has amount: $hasAmount")
-        return hasAmount
+        // Log.d(TAG, "Amount check result: $hasAmount")
+        // return hasAmount // No need for intermediate variable
     }
 
+    // Checks if the message contains common keywords associated with debit transactions.
     private fun isDebitTransaction(message: String): Boolean {
+        // Keywords indicating a debit or general transaction
         val debitKeywords = listOf(
-            "debited",
-            "debit",
-            "spent",
-            "paid",
-            "withdrawn",
-            "purchase",
-            "payment",
-            "transferred",
-            "transaction"
+            "debited", "debit", "spent", "paid", "withdrawn", "purchase",
+            "payment", "transferred", "transaction", "sent", "dr" // Added 'sent', 'dr'
         )
-
-        val isDebitTransaction = debitKeywords.any { keyword ->
-            message.contains(keyword, ignoreCase = true)
-        }
-        Log.d(TAG, "Message is debit transaction: $isDebitTransaction")
-        return isDebitTransaction
+        return debitKeywords.any { keyword -> message.contains(keyword, ignoreCase = true) }
+        // Log.d(TAG, "Debit keyword check result: $isDebit")
+        // return isDebit // No need for intermediate variable
     }
 
+    // Checks if the sender address contains any of the known financial sender IDs.
     private fun senderMatches(sender: String): Boolean {
-        val matched = financialSenders.any {
-            sender.contains(it, ignoreCase = true) ||
-                    it.startsWith(sender, ignoreCase = true)
+        // Normalize sender? (e.g., remove country code prefix if present) - Optional
+        val normalizedSender = sender // .replace("+91", "") // Example normalization
+
+        return financialSenders.any { knownSender ->
+            // Check if the normalized sender contains the known ID (e.g., "HDFCBK" in "VM-HDFCBK")
+            // Also check exact match for IDs that don't usually have prefixes (e.g., "PAYTM")
+            normalizedSender.contains(knownSender, ignoreCase = true)
         }
-
-        Log.d(TAG, "Sender check: $sender -> $matched")
-        return matched
-    }
-
-    private fun createNotificationChannels(context: Context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val notificationManager =
-                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-            // Transaction channel
-            NotificationChannel(
-                TRANSACTION_CHANNEL_ID,
-                "Transactions",
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                description = "Transaction notifications"
-                enableLights(true)
-                enableVibration(true)
-                notificationManager.createNotificationChannel(this)
-            }
-
-            // Details needed channel
-            NotificationChannel(
-                DETAILS_CHANNEL_ID,
-                "Details Required",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Notifications requiring user input"
-                enableLights(true)
-                enableVibration(true)
-                notificationManager.createNotificationChannel(this)
-            }
-
-            // Debug channel
-            NotificationChannel(
-                "debug_channel",
-                "Debug Information",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Debug notifications for app troubleshooting"
-                notificationManager.createNotificationChannel(this)
-            }
-        }
+        // Log.d(TAG, "Sender '$normalizedSender' match result: $matched")
+        // return matched // No need for intermediate variable
     }
 }

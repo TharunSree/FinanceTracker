@@ -23,7 +23,7 @@ import com.example.financetracker.database.entity.Category
         Category::class, // Now includes colorHex
         Budget::class
     ],
-    version = 8, // <--- INCREMENT THE VERSION (e.g., from 7 to 8)
+    version = 9, // <--- INCREMENT THE VERSION (e.g., from 8 to 9)
     exportSchema = true // Recommended to export schema for migrations
     // --- Add Auto-migration information if needed ---
     /*

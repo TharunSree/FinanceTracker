@@ -1,16 +1,34 @@
 package com.example.financetracker.database.entity
 
-import androidx.compose.ui.graphics.Color // Optional: Import if you store Color Int
+// Optional: Import if you store Color Int directly, but storing Hex String is usually better for DB compatibility
+// import androidx.compose.ui.graphics.Color
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import androidx.room.Index
 
-@Entity(tableName = "category_table")
+/**
+ * Represents a category entity in the Room database.
+ * Includes name, user association, default status, and an optional color.
+ */
+@Entity(
+    tableName = "category_table", // Using the table name provided by the user
+    // Index for faster lookups by name and userId
+    indices = [Index(value = ["name", "userId"], unique = true)] // Name should be unique per user
+)
 data class Category(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val name: String,
+    @PrimaryKey(autoGenerate = true)
+    val id: Int = 0, // Primary key is Int, default 0 for Room auto-generation
+
+    val name: String, // Name of the category (e.g., "Food", "Shopping")
+
+    // ID of the user this category belongs to.
+    // Null might indicate a global/default category or guest user.
     val userId: String?,
+
+    // Flag indicating if this is a system-defined default category.
     val isDefault: Boolean = false,
-    // Add a field to store the color hex string (e.g., "#FF0000" for red)
-    // Make it nullable for backward compatibility and default categories
+
+    // Stores the color associated with the category as a Hex string (e.g., "#FF5733").
+    // Nullable to support optional colors or backward compatibility.
     val colorHex: String? = null
 )

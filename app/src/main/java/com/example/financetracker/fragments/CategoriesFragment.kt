@@ -104,63 +104,46 @@ class CategoriesFragment : Fragment() {
     private fun observeCategories(userId: String?) {
         // Use the database instance from the ViewModel's factory or inject ViewModel directly
         val dao = TransactionDatabase.getDatabase(requireContext()).categoryDao()
-        lifecycleScope.launch {
-            dao.getAllCategories(userId)
-                .catch { e -> Log.e(TAG, "Error loading categories", e) }
+        // Inside your CategoriesFragment, likely in onViewCreated or similar
+
+// Assuming 'dao', 'userId', 'categoryAdapter', 'emptyView' are initialized appropriately
+// Example using viewLifecycleOwner.lifecycleScope
+        viewLifecycleOwner.lifecycleScope.launch {
+            // Observe the Flow of categories for the current user (or null for guest/global)
+            dao.getAllCategories(userId) // This Flow includes user-specific and global categories
+                .catch { e ->
+                    // Handle any errors during Flow collection
+                    Log.e(TAG, "Error observing categories", e)
+                    // Optionally show an error message to the user
+                }
                 .collect { categories ->
-                    Log.d(TAG, "Observed ${categories.size} categories")
-                    categoryAdapter.submitList(categories) // Update adapter
+                    // This block executes whenever the category list changes in the database
+                    Log.d(TAG, "Observed ${categories.size} categories for user $userId")
+
+                    // Update the RecyclerView adapter with the latest list
+                    categoryAdapter.submitList(categories)
+
+                    // Show/hide the empty view based on the list content
+                    // Ensure emptyView is initialized before accessing visibility
                     if (::emptyView.isInitialized) {
                         emptyView.visibility = if (categories.isEmpty()) View.VISIBLE else View.GONE
+                        Log.d(TAG, "Empty view visibility set to: ${emptyView.visibility}")
+                    } else {
+                        Log.w(TAG, "emptyView not initialized when trying to set visibility.")
                     }
-                    // Check for initial population if needed (moved from loadCategories)
-                    if (categories.isEmpty() && userId != null) {
-                        Log.d(TAG, "No categories found, attempting to add defaults.")
-                        // Consider calling a ViewModel function instead of CategoryUtils directly
-                        CategoryUtils.addDefaultCategories(requireContext(), userId)
-                        // Flow should re-emit automatically after adding defaults
-                    }
+
+                    // --- REMOVED THE BLOCK THAT CALLED CategoryUtils.addDefaultCategories ---
+                    // The fragment should NOT be responsible for adding defaults here.
+                    // The CategoryUtils.initializeCategories() function (called once elsewhere, e.g., MainActivity)
+                    // handles the initial setup, including adding defaults if the DB is empty for the user.
+                    // The Flow will automatically emit the updated list if defaults were added during initialization.
                 }
         }
+
+
     }
 
-    private fun loadCategories(userId: String?) {
-        lifecycleScope.launch {
-            try {
-                Log.d(TAG, "Loading categories for user: $userId")
 
-                // Collect categories from flow
-                database.categoryDao().getAllCategories(userId)
-                    .catch { e ->
-                        Log.e(TAG, "Error loading categories", e)
-                        context?.let {
-                            Toast.makeText(it, "Error loading categories", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                    .collect { categories ->
-                        Log.d(TAG, "Found ${categories.size} categories")
-                        categoryAdapter.submitList(categories)
-
-                        // Update empty state if needed
-                        if (::emptyView.isInitialized) {
-                            emptyView.visibility = if (categories.isEmpty()) View.VISIBLE else View.GONE
-                        }
-
-                        // If we have no categories, add default ones
-                        if (categories.isEmpty()) {
-                            CategoryUtils.addDefaultCategories(requireContext(), userId ?: "guest_user")
-                            // After adding defaults, refresh the list
-                            loadCategories(userId)
-                        }
-                    }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in loadCategories", e)
-                context?.let {
-                    Toast.makeText(it, "Error loading categories: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
 
     override fun onResume() {
         super.onResume()
@@ -251,7 +234,7 @@ class CategoriesFragment : Fragment() {
                 Toast.makeText(requireContext(), "Category added", Toast.LENGTH_SHORT).show()
 
                 // Refresh categories
-                loadCategories(userId)
+
             } catch (e: Exception) {
                 Log.e(TAG, "Error adding category", e)
                 Toast.makeText(requireContext(), "Error adding category: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -270,7 +253,7 @@ class CategoriesFragment : Fragment() {
                 Toast.makeText(requireContext(), "Category updated", Toast.LENGTH_SHORT).show()
 
                 // Refresh categories
-                loadCategories(category.userId)
+
             } catch (e: Exception) {
                 Log.e(TAG, "Error updating category", e)
                 Toast.makeText(requireContext(), "Error updating category: ${e.message}", Toast.LENGTH_SHORT).show()

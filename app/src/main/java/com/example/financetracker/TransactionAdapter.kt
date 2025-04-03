@@ -1,78 +1,79 @@
-package com.example.financetracker
+package com.example.financetracker // Or your preferred package
 
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageView
-import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.example.financetracker.R
 import com.example.financetracker.database.entity.Transaction
+import com.example.financetracker.databinding.ListItemTransactionBinding // Import generated binding class
 import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 class TransactionAdapter(
-    private var transactions: List<Transaction>,
-    private val listener: OnTransactionInteractionListener
-) : RecyclerView.Adapter<TransactionAdapter.TransactionViewHolder>() {
+    private val onTransactionLongClicked: (Transaction, View) -> Unit
+    // Add onItemClicked lambda if you need short click action
+    // private val onTransactionClicked: (Transaction) -> Unit
+) : ListAdapter<Transaction, TransactionAdapter.TransactionViewHolder>(TransactionDiffCallback()) {
 
-    fun getTransactions(): List<Transaction> = transactions
-
-    interface OnTransactionInteractionListener {
-        fun onEditTransaction(transaction: Transaction)
-        fun onLongPressTransaction(transaction: Transaction)
-        fun onDeleteTransaction(transaction: Transaction) // New interaction for delete
-    }
-
-    inner class TransactionViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        val nameTextView: TextView = itemView.findViewById(R.id.transactionName)
-        val amountTextView: TextView = itemView.findViewById(R.id.transactionAmount)
-        val dateTextView: TextView = itemView.findViewById(R.id.transactionDate)
-        val categoryTextView: TextView = itemView.findViewById(R.id.transactionCategory)
-        private val trashIcon: ImageView = itemView.findViewById(R.id.delete_icon) // Trash can icon
+    // ViewHolder holds the views for a single item
+    inner class TransactionViewHolder(private val binding: ListItemTransactionBinding) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(transaction: Transaction) {
-            nameTextView.text = transaction.name
-            amountTextView.text = "₹${transaction.amount}"
-            // Convert Long to Date and then to String
-            val date = Date(transaction.date)
-            val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
-            dateTextView.text = dateFormat.format(date)
-            categoryTextView.text = transaction.category
+            binding.textViewName.text = transaction.name
+            binding.textViewAmount.text = String.format(Locale.getDefault(), "₹%.2f", transaction.amount) // Format amount
+            binding.textViewCategory.text = transaction.category ?: "Uncategorized" // Handle null category
+            binding.textViewDate.text = formatDate(transaction.date)
 
-            // Handle long click for context menu
-            itemView.setOnLongClickListener {
-                listener.onLongPressTransaction(transaction)
-                true
+            // Set long click listener on the card view itself
+            binding.root.setOnLongClickListener {
+                onTransactionLongClicked(transaction, it) // Pass transaction and the view (CardView)
+                true // Indicate the click was handled
             }
 
-            // Handle trash icon click (delete)
-            trashIcon.setOnClickListener {
-                listener.onDeleteTransaction(transaction)
+            // Set short click listener if needed
+            /*
+            binding.root.setOnClickListener {
+                onTransactionClicked(transaction)
             }
+            */
         }
 
-        // To make trash icon visible when item is swiped enough
-        fun showTrashIcon(visible: Boolean) {
-            trashIcon.visibility = if (visible) View.VISIBLE else View.GONE
+        private fun formatDate(timestamp: Long): String {
+            // Consistent date formatting
+            val displayFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+            return displayFormat.format(timestamp)
         }
     }
 
+    // Creates new ViewHolders (invoked by the layout manager)
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TransactionViewHolder {
-        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_transaction, parent, false)
-        return TransactionViewHolder(view)
+        val binding = ListItemTransactionBinding.inflate(
+            LayoutInflater.from(parent.context),
+            parent,
+            false
+        )
+        return TransactionViewHolder(binding)
     }
 
+    // Replaces the contents of a ViewHolder (invoked by the layout manager)
     override fun onBindViewHolder(holder: TransactionViewHolder, position: Int) {
-        holder.bind(transactions[position])
+        val currentTransaction = getItem(position)
+        holder.bind(currentTransaction)
     }
 
-    override fun getItemCount(): Int = transactions.size
+    // DiffUtil helps efficiently update the list
+    class TransactionDiffCallback : DiffUtil.ItemCallback<Transaction>() {
+        override fun areItemsTheSame(oldItem: Transaction, newItem: Transaction): Boolean {
+            // Check if items represent the same object (e.g., by ID)
+            return oldItem.id == newItem.id
+        }
 
-    fun updateData(newTransactions: List<Transaction>) {
-        transactions = newTransactions
-        notifyDataSetChanged()
+        override fun areContentsTheSame(oldItem: Transaction, newItem: Transaction): Boolean {
+            // Check if the content/data of the items are the same
+            return oldItem == newItem // Assumes Transaction is a data class
+        }
     }
-
-    fun getTransactionAt(position: Int): Transaction = transactions[position]
 }

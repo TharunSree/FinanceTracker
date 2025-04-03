@@ -60,27 +60,57 @@ class TransactionViewModel(
     private val _loading = MutableLiveData<Boolean>()
     val loading: LiveData<Boolean> = _loading
 
+    // Inside TransactionViewModel class...
+
+    private val defaultCategories = listOf( // Make sure this list is populated
+        "Food & Dining", "Groceries", "Transportation", "Utilities", "Rent/Mortgage",
+        "Shopping", "Entertainment", "Health & Wellness", "Travel", "Salary",
+        "Freelance", "Investment", "Personal Care", "Education", "Gifts & Donations",
+        "Subscriptions", "Miscellaneous", "Uncategorized"
+    )
+
     val categoryNames: StateFlow<List<String>> =
-    // Get the user ID flow (or handle null appropriately)
-        // For simplicity, assuming direct access or a helper that provides it
-        flow { emit(getCurrentUserId()) } // Replace with your actual user ID source/flow
+        flow {
+            val id = getCurrentUserId()
+            Log.d(TAG, "categoryNames flow: Emitting User ID = $id") // Log User ID
+            emit(id)
+        }
             .flatMapLatest { userId ->
-                // Get categories for the user (or defaults if needed)
-                categoryDao.getAllCategories(userId) // Observe the DAO's Flow
+                Log.d(TAG, "categoryNames flow: flatMapLatest received userId = $userId")
+                if (userId == null || GuestUserManager.isGuestMode(userId)) {
+                    Log.d(TAG, "categoryNames flow: User is null or guest, emitting empty Category list.")
+                    flow { emit(emptyList<com.example.financetracker.database.entity.Category>()) }
+                } else {
+                    Log.d(TAG, "categoryNames flow: Calling DAO getAllCategoriesForUser for userId = $userId")
+                    // Ensure categoryDao.getAllCategoriesForUser(userId) returns Flow<List<Category>>
+                    categoryDao.getAllCategories(userId) // RENAMED from previous example, ensure it matches your DAO
+                }
             }
-            .map { categoryList ->
-                // Map the Category objects to just their names
-                categoryList.map { it.name }.distinct().sorted() // Get distinct names and sort
+            .map { userCategoryList ->
+                // This map block might not run if the flow above emits nothing or errors before this
+                Log.d(TAG, "categoryNames flow: .map received DAO list (size ${userCategoryList.size}) = ${userCategoryList.map { it.name }}")
+                val userCategoryNames = userCategoryList.map { it.name }
+
+                Log.d(TAG, "categoryNames flow: Combining user names [$userCategoryNames] with defaults [$defaultCategories]")
+                val combinedNames = (userCategoryNames + defaultCategories)
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .distinct()
+                    .sorted()
+                Log.d(TAG, "categoryNames flow: Final combined list (size ${combinedNames.size}) = $combinedNames")
+                combinedNames
             }
             .catch { e ->
-                Log.e(TAG, "Error fetching category names", e)
-                emit(emptyList()) // Emit empty list on error
+                Log.e(TAG, "categoryNames flow: ERROR caught in flow", e)
+                // Emit defaults on error
+                emit(defaultCategories.sorted())
             }
-            // Convert Flow to StateFlow for easy observation in UI
             .stateIn(
                 scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000), // Keep subscribed 5s after last observer
-                initialValue = emptyList() // Initial value
+                started = SharingStarted.WhileSubscribed(5000),
+                initialValue = defaultCategories.sorted().also {
+                    Log.d(TAG, "categoryNames flow: Setting initialValue (size ${it.size}) = $it") // Log initial value
+                }
             )
 
     private fun getCurrentUserId(): String? {
@@ -253,7 +283,7 @@ class TransactionViewModel(
 
             // Insert into Room and get the generated ID
             val id = database.transactionDao().insertTransactionAndGetId(transaction)
-            transaction.id = id.toInt()
+            transaction.id = id
 
             // Sync to Firestore if not in guest mode
             if (!GuestUserManager.isGuestMode(transaction.userId)) {
@@ -289,6 +319,91 @@ class TransactionViewModel(
             }
     }
 
+    // Inside class TransactionViewModel(...) { ...
+
+    // Method to update only specific fields after fetching the original transaction
+    fun updateTransactionCategoryAndMerchant(
+        transactionId: Long,
+        newCategory: String,
+        newMerchant: String? // Merchant can be nullable/empty string
+    ) = viewModelScope.launch {
+        Log.d(TAG, "Attempting partial update for ID: $transactionId with Cat: $newCategory, Merch: $newMerchant")
+        try {
+            _loading.value = true // Indicate loading started
+
+            // 1. Fetch the original transaction from the database
+            // Ensure your DAO's getTransactionById accepts a Long ID
+            val originalTransaction = database.transactionDao().getTransactionById(transactionId.toInt())
+
+            if (originalTransaction == null) {
+                // Handle case where the transaction might have been deleted elsewhere
+                Log.e(TAG, "Cannot update: Transaction not found for ID $transactionId")
+                _errorMessage.postValue("Transaction not found, cannot update.")
+                // Set loading false here as we are returning early
+                _loading.value = false
+                return@launch // Exit the coroutine
+            }
+
+            // 2. Create the updated transaction object
+            // Use the copy() method of the data class to preserve other fields
+            val updatedTransaction = originalTransaction.copy(
+                category = newCategory,
+                merchant = newMerchant ?: "" // Use empty string if null was passed
+            )
+
+            Log.d(TAG,"Partially updated object prepared: $updatedTransaction")
+
+            // 3. Call the existing full update method
+            // This existing method should handle updating Room and Firestore (if applicable)
+            updateTransaction(updatedTransaction) // Reuse existing update logic
+
+            // Note: The finally block within the reused updateTransaction method
+            // should ideally handle setting _loading.value = false.
+            // If not, you might need to manage it here, but it's better if
+            // updateTransaction consistently handles its own loading state end.
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during partial update for transaction $transactionId", e)
+            _errorMessage.postValue("Error updating transaction details: ${e.message}")
+            // Ensure loading is false even if an exception occurs before calling updateTransaction's finally
+            _loading.value = false
+        }
+        // No finally block needed here if updateTransaction reliably handles it.
+    }
+
+
+    // Reminder: Ensure your TransactionDao interface has this method declared:
+    /*
+    @Dao
+    interface TransactionDao {
+        // ... other methods ...
+
+        @Query("SELECT * FROM transactions WHERE id = :id LIMIT 1")
+        suspend fun getTransactionById(id: Long): Transaction? // Accepts Long
+    }
+    */
+
+    // Reminder: Ensure your existing updateTransaction handles loading state
+    /*
+    fun updateTransaction(transaction: Transaction) = viewModelScope.launch {
+        try {
+            _loading.value = true // Make sure it sets loading true
+            // ... Room update logic ...
+            // ... Firestore update logic (using createFirestoreDocument/updateFirestoreTransaction) ...
+            loadAllTransactions() // Or trigger appropriate refresh
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating transaction", e)
+            _errorMessage.postValue("Error updating transaction: ${e.message}")
+        } finally {
+            _loading.value = false // ** Crucial: Ensure finally block sets loading false **
+        }
+    }
+    */
+
+
+// ... rest of your TransactionViewModel class ...
+// } // End of TransactionViewModel class
+
     // Method to update a transaction
     fun updateTransaction(transaction: Transaction) = viewModelScope.launch {
         try {
@@ -299,7 +414,7 @@ class TransactionViewModel(
             // Update in Firestore if not guest mode
             val userId = transaction.userId
             if (!GuestUserManager.isGuestMode(userId)) {
-                val documentId = transaction.documentId.takeIf { it.isNotEmpty() } ?:
+                val documentId = transaction.documentId.takeIf { it?.isNotEmpty() == true  } ?:
                 createFirestoreDocument(transaction)
 
                 transaction.documentId = documentId
@@ -503,7 +618,7 @@ class TransactionViewModel(
                     category = category,
                     userId = userId // Add userId field to Merchant entity
                 )
-                database.merchantDao().insertMerchant(merchant)
+                database.merchantDao().insert(merchant)
 
                 // Save to Firestore (under user's merchants collection)
                 if (!GuestUserManager.isGuestMode(userId)) {
@@ -707,7 +822,7 @@ class TransactionViewModel(
                                     val documentId = doc.id
 
                                     val transaction = Transaction(
-                                        id = id,
+                                        id = id.toLong(),
                                         name = name,
                                         amount = amount,
                                         date = date,
@@ -731,8 +846,8 @@ class TransactionViewModel(
 
                             for (transaction in transactions) {
                                 val existingTransaction = currentTransactions.find {
-                                    (it.documentId == transaction.documentId && transaction.documentId.isNotEmpty()) ||
-                                            (it.id == transaction.id && transaction.id != 0) ||
+                                    (it.documentId == transaction.documentId && transaction.documentId?.isNotEmpty() == true) ||
+                                            (it.id == transaction.id && transaction.id.toInt() != 0) ||
                                             (it.amount == transaction.amount &&
                                                     it.date == transaction.date &&
                                                     it.name == transaction.name &&
@@ -744,7 +859,7 @@ class TransactionViewModel(
                                     transactionDao.insertTransaction(transaction)
                                 } else {
                                     // Update existing transaction if needed
-                                    if (existingTransaction.documentId.isEmpty() && transaction.documentId.isNotEmpty()) {
+                                    if (existingTransaction.documentId?.isEmpty() == true  && transaction.documentId?.isNotEmpty() == true ) {
                                         existingTransaction.documentId = transaction.documentId
                                         transactionDao.updateTransaction(existingTransaction)
                                     }
@@ -802,7 +917,7 @@ class TransactionViewModel(
                                         val documentId = doc.id
 
                                         val transaction = Transaction(
-                                            id = id,
+                                            id = id.toLong(),
                                             name = name,
                                             amount = amount,
                                             date = date,
@@ -889,11 +1004,13 @@ class TransactionViewModel(
         viewModelScope.launch {
             try {
                 _loading.value = true
-                val docRef = if (transaction.documentId.isNotEmpty()) {
-                    firestore.collection("users")
-                        .document(userId)
-                        .collection("transactions")
-                        .document(transaction.documentId)
+                val docRef = if (transaction.documentId?.isNotEmpty() == true) {
+                    transaction.documentId?.let {
+                        firestore.collection("users")
+                            .document(userId)
+                            .collection("transactions")
+                            .document(it)
+                    }
                 } else {
                     firestore.collection("users")
                         .document(userId)
@@ -902,8 +1019,10 @@ class TransactionViewModel(
                 }
 
                 // If it's a new document, update transaction with the document ID
-                if (transaction.documentId.isEmpty()) {
-                    transaction.documentId = docRef.id
+                if (transaction.documentId?.isEmpty() == true) {
+                    if (docRef != null) {
+                        transaction.documentId = docRef.id
+                    }
                     // Update in local database with the document ID
                     transactionDao.updateTransaction(transaction)
                 }
@@ -920,20 +1039,22 @@ class TransactionViewModel(
                     "userId" to userId
                 )
 
-                docRef.set(transactionMap)
-                    .addOnSuccessListener {
-                        Log.d(
-                            "TransactionViewModel",
-                            "Transaction synced to Firestore: ${transaction.id}, docId: ${transaction.documentId}"
-                        )
-                        viewModelScope.launch {
-                            loadAllTransactions()
+                if (docRef != null) {
+                    docRef.set(transactionMap)
+                        .addOnSuccessListener {
+                            Log.d(
+                                "TransactionViewModel",
+                                "Transaction synced to Firestore: ${transaction.id}, docId: ${transaction.documentId}"
+                            )
+                            viewModelScope.launch {
+                                loadAllTransactions()
+                            }
                         }
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e("TransactionViewModel", "Failed to sync transaction to Firestore", e)
-                        _errorMessage.postValue("Failed to sync transaction to Firestore: ${e.message}")
-                    }
+                        .addOnFailureListener { e ->
+                            Log.e("TransactionViewModel", "Failed to sync transaction to Firestore", e)
+                            _errorMessage.postValue("Failed to sync transaction to Firestore: ${e.message}")
+                        }
+                }
             } catch (e: Exception) {
                 Log.e("TransactionViewModel", "Error syncing transaction to Firestore", e)
                 _errorMessage.postValue("Error syncing transaction to Firestore: ${e.message}")

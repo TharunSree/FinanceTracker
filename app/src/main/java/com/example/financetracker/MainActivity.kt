@@ -17,7 +17,6 @@ import android.provider.Telephony
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -44,20 +43,14 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
 import androidx.appcompat.app.ActionBarDrawerToggle
-import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.navigation.NavigationView
 import com.example.financetracker.databinding.ActivityMainBinding
 import android.view.View
-import android.view.ViewGroup
 import android.widget.ImageView
-import androidx.activity.compose.setContent
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
-import androidx.core.app.NotificationCompat
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
-import com.example.financetracker.database.dao.TransactionDao
 import com.example.financetracker.repository.TransactionRepository
 import com.example.financetracker.ui.screens.StatisticsScreen
 import com.example.financetracker.utils.CategoryUtils
@@ -690,32 +683,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         }
     }
 
-    // Add this function to your MainActivity
-    fun testSmsReceiver() {
-        try {
-            // Check if receiver is registered
-            val isInitialized = SmsBroadcastReceiver.isInitialized
-            Log.d(TAG, "SMS Receiver initialized: $isInitialized")
-
-            // Try to create a simulated SMS intent for testing
-            val intent = Intent(Telephony.Sms.Intents.SMS_RECEIVED_ACTION)
-            val bundle = Bundle()
-            bundle.putString("sender", "SBIUPI")
-            bundle.putString("message", "Your account has been debited with Rs 100.00 for GPAY payment.")
-            intent.putExtras(bundle)
-
-            // Log the receiver status
-            Toast.makeText(this, "SMS Receiver status: ${if (isInitialized) "Initialized" else "Not Initialized"}",
-                Toast.LENGTH_LONG).show()
-
-            // Register receiver again just to be sure
-            registerSmsReceiver()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error testing SMS receiver", e)
-            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
     private fun updateFilterStatus(count: Int) {
         supportActionBar?.subtitle = "Showing $count transactions"
     }
@@ -858,7 +825,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         val userId = auth.currentUser?.uid ?: return
 
         // Check if this transaction has already been synced recently to prevent duplicates
-        if (transaction.documentId.isNotEmpty()) {
+        if (transaction.documentId?.isNotEmpty() == true) {
             Log.d(TAG, "Using existing documentId: ${transaction.documentId}")
         } else {
             Log.d(TAG, "No documentId found, will generate one")
@@ -934,18 +901,20 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         transactionMap["documentId"] = docId
 
         // Update in Firestore
-        firestore.collection("users")
-            .document(userId)
-            .collection("transactions")
-            .document(docId)
-            .set(transactionMap)
-            .addOnSuccessListener {
-                Log.d(TAG, "Transaction successfully updated in Firestore")
-            }
-            .addOnFailureListener { e ->
-                Log.e(TAG, "Error updating transaction in Firestore", e)
-                Toast.makeText(this, "Error updating in cloud: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
+        if (docId != null) {
+            firestore.collection("users")
+                .document(userId)
+                .collection("transactions")
+                .document(docId)
+                .set(transactionMap)
+                .addOnSuccessListener {
+                    Log.d(TAG, "Transaction successfully updated in Firestore")
+                }
+                .addOnFailureListener { e ->
+                    Log.e(TAG, "Error updating transaction in Firestore", e)
+                    Toast.makeText(this, "Error updating in cloud: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+        }
     }
 
     // Override this method in MainActivity to use your existing confirmation dialog
