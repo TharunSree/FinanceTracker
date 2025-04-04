@@ -115,6 +115,7 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling) // Uses alias
     debugImplementation(libs.androidx.ui.test.manifest) // Uses alias
     implementation(libs.mpandroidchart)
+    implementation(libs.androidx.flowlayout) // Uses alias
 
     // --- Gemini / AI ---
     implementation(libs.google.gemini) // Uses alias

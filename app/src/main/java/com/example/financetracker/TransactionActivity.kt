@@ -42,13 +42,15 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
     override fun getLayoutResourceId(): Int = R.layout.activity_transactions
 
     private lateinit var binding: ActivityTransactionsBinding
+
     // private lateinit var transactionTableLayout: TableLayout // Remove
     private lateinit var filterChipGroup: ChipGroup
     private lateinit var categoryFilterAutoComplete: AutoCompleteTextView
     private lateinit var transactionRecyclerView: RecyclerView // Add this
     private lateinit var transactionAdapter: TransactionAdapter // Add this
 
-    private var currentFilter: TransactionViewModel.FilterState = TransactionViewModel.FilterState.ALL // Use ViewModel's enum
+    private var currentFilter: TransactionViewModel.FilterState =
+        TransactionViewModel.FilterState.ALL // Use ViewModel's enum
 
     private val transactionViewModel: TransactionViewModel by viewModels {
         val database = TransactionDatabase.getDatabase(this)
@@ -81,7 +83,8 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
         // transactionTableLayout = findViewById(R.id.transactionTableLayout) // Remove
         filterChipGroup = binding.filterChipGroup // Use binding
         categoryFilterAutoComplete = binding.categoryFilterAutoComplete // Use binding
-        transactionRecyclerView = binding.transactionRecyclerView // Use binding (Make sure ID matches XML)
+        transactionRecyclerView =
+            binding.transactionRecyclerView // Use binding (Make sure ID matches XML)
 
         setupRecyclerView() // Call setup for RecyclerView
         setupFilters()
@@ -98,11 +101,17 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
             this // Lifecycle Owner
         ) { _, bundle ->
             val id = bundle.getLong(EditTransactionDialogFragment.RESULT_TRANSACTION_ID)
+            val name = bundle.getString(EditTransactionDialogFragment.RESULT_NEW_NAME)
             val category = bundle.getString(EditTransactionDialogFragment.RESULT_NEW_CATEGORY)
             val merchant = bundle.getString(EditTransactionDialogFragment.RESULT_NEW_MERCHANT)
 
             if (id != 0L && category != null) {
-                transactionViewModel.updateTransactionCategoryAndMerchant(id, category, merchant)
+                transactionViewModel.updateTransactionCategoryAndMerchant(
+                    id,
+                    name,
+                    category,
+                    merchant
+                )
             }
         }
     }
@@ -141,7 +150,7 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
                     R.id.chipMonth -> transactionViewModel.loadMonthTransactions()
                 }
                 // Update currentFilter if needed for other logic, but ViewModel now drives state
-                currentFilter = when(selectedId) {
+                currentFilter = when (selectedId) {
                     R.id.chipAll -> TransactionViewModel.FilterState.ALL
                     R.id.chipToday -> TransactionViewModel.FilterState.TODAY
                     R.id.chipWeek -> TransactionViewModel.FilterState.WEEK
@@ -234,6 +243,7 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
                         initiateEdit(transaction)
                         true // Indicate menu item click was handled
                     }
+
                     else -> false
                 }
             }
@@ -244,7 +254,10 @@ class TransactionActivity : BaseActivity(), NavigationView.OnNavigationItemSelec
     private fun initiateEdit(transaction: Transaction) {
         // Create an instance of the dialog using the factory method, passing the transaction
         val dialog = EditTransactionDialogFragment.newInstance(transaction)
-        Log.d("TransactionActivity", "Initiating edit for ID ${transaction.id}, Category being passed: '${transaction.category}'")
+        Log.d(
+            "TransactionActivity",
+            "Initiating edit for ID ${transaction.id}, Category being passed: '${transaction.category}'"
+        )
         // Show the dialog using the FragmentManager
         dialog.show(supportFragmentManager, EditTransactionDialogFragment.TAG)
     }

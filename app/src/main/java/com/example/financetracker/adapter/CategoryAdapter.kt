@@ -80,8 +80,8 @@ class CategoryAdapter(
             // --- End Set Click Listeners ---
 
             // Enable/disable delete based on isDefault flag
-            deleteButton.isEnabled = !category.isDefault
-            deleteButton.alpha = if (category.isDefault) 0.5f else 1.0f
+            //deleteButton.isEnabled = !category.isDefault
+            //deleteButton.alpha = if (category.isDefault) 0.5f else 1.0f
             // Optionally disable editing default category names?
             // editButton.isEnabled = !category.isDefault
             // editButton.alpha = if (category.isDefault) 0.5f else 1.0f

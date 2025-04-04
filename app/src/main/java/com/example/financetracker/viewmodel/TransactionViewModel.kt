@@ -33,17 +33,18 @@ import kotlinx.coroutines.tasks.await
 import java.util.Calendar
 
 data class CategoryStatistics(
-    val maxExpense: Double,
-    val totalExpense: Double,
-    val transactionCount: Int
+    val maxExpense: Double = 0.0,
+    val totalExpense: Double = 0.0,
+    val transactionCount: Int = 0
 )
 
 data class TransactionStatistics(
-    val maxExpense: Double,
-    val minExpense: Double,
-    val totalExpense: Double,
-    val categoryStats: Map<String, CategoryStatistics>
+    val maxExpense: Double = 0.0,
+    val minExpense: Double = 0.0,
+    val totalExpense: Double = 0.0,
+    val categoryStats: Map<String, CategoryStatistics> = emptyMap()
 )
+
 
 class TransactionViewModel(
     private val database: TransactionDatabase,
@@ -324,6 +325,7 @@ class TransactionViewModel(
     // Method to update only specific fields after fetching the original transaction
     fun updateTransactionCategoryAndMerchant(
         transactionId: Long,
+        newName: String?,
         newCategory: String,
         newMerchant: String? // Merchant can be nullable/empty string
     ) = viewModelScope.launch {
@@ -347,6 +349,7 @@ class TransactionViewModel(
             // 2. Create the updated transaction object
             // Use the copy() method of the data class to preserve other fields
             val updatedTransaction = originalTransaction.copy(
+                name = newName ?: "",
                 category = newCategory,
                 merchant = newMerchant ?: "" // Use empty string if null was passed
             )

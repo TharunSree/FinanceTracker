@@ -33,10 +33,10 @@
 
             <!-- App Logo -->
             <ImageView
-                android:layout_width="120dp"
-                android:layout_height="120dp"
-                android:layout_marginBottom="32dp"
-                android:src="@drawable/ic_profile"
+                android:layout_width="320dp"
+                android:layout_height="320dp"
+                android:layout_marginBottom="2dp"
+                android:src="@drawable/logo"
                 android:contentDescription="App Logo" />
 
             <!-- Email Input -->

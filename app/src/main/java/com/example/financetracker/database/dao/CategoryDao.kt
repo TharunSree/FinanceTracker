@@ -35,6 +35,9 @@ interface CategoryDao {
     @Delete
     suspend fun deleteCategory(category: Category)
 
+    @Query("DELETE FROM category_table WHERE id = :categoryId")
+    suspend fun deleteCategoryById(categoryId: Int)
+
     /**
      * Gets all categories for a specific user OR global categories (where userId is NULL).
      * Returns a Flow for observing changes.

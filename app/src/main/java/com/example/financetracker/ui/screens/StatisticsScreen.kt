@@ -1,9 +1,14 @@
 package com.example.financetracker.ui.screens
 
 // Import Pager related components
+import android.app.ProgressDialog.show
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material.icons.filled.DateRange // Or DateRange, EditCalendar etc.
+// Import IconButton and Icon from M3 if not already done
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
 // Math imports for nice axis calculation
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -23,6 +28,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
 // Import AndroidView for MPAndroidChart integration
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material3.*
@@ -68,6 +74,10 @@ import com.github.mikephil.charting.components.AxisBase
 import java.text.DateFormatSymbols // Corrected import
 
 import java.text.SimpleDateFormat
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import java.util.*
 import java.util.concurrent.TimeUnit // Added import (potentially useful)
 
@@ -433,11 +443,18 @@ private fun rememberProcessedChartData(
 fun StatisticsScreen(viewModel: StatisticsViewModel) { // Pass your ViewModel instance
     // --- State Collection ---
     val selectedPeriod by viewModel.selectedPeriod.collectAsStateWithLifecycle()
+    val selectedSpecificDate by viewModel.selectedSpecificDate.collectAsStateWithLifecycle()
+    val selectedSpecificMonthYear by viewModel.selectedSpecificMonthYear.collectAsStateWithLifecycle() // Add
+    val selectedSpecificYear by viewModel.selectedSpecificYear.collectAsStateWithLifecycle()       // Add
     val transactionStatistics by viewModel.transactionStatistics.collectAsStateWithLifecycle()
     val dailySpendingData by viewModel.spendingDataByTimePoint.collectAsStateWithLifecycle()
     val transactionCount by viewModel.transactionCount.collectAsStateWithLifecycle()
     // Assuming ViewModel provides this map for user-assigned colors eventually
     val categoryColorsMap by viewModel.categoryColorsMap.collectAsStateWithLifecycle()
+
+    var showDatePickerDialog by remember { mutableStateOf(false) }
+    var showMonthYearPickerDialog by remember { mutableStateOf(false) }
+    var showYearPickerDialog by remember { mutableStateOf(false) }
 
     // --- Theme ---
     val customColors = darkColorScheme(
@@ -527,6 +544,61 @@ fun StatisticsScreen(viewModel: StatisticsViewModel) { // Pass your ViewModel in
                             selectedLabelColor = MaterialTheme.colorScheme.onPrimary
                         )
                     )
+                }
+            }
+
+            // Row for displaying current selection and triggering pickers
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween // Or Arrangement.Start
+            ) {
+                // Display current selection based on period
+                val selectionText = when (selectedPeriod) {
+                    StatisticsViewModel.TimePeriod.TODAY -> "Date: ${selectedSpecificDate.format(
+                        DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))}"
+                    StatisticsViewModel.TimePeriod.WEEK -> "Period: Last 7 Days" // Or display specific week if implemented
+                    StatisticsViewModel.TimePeriod.MONTH -> "Month: ${selectedSpecificMonthYear.format(
+                        DateTimeFormatter.ofPattern("MMM yyyy", Locale.getDefault()))}"
+                    StatisticsViewModel.TimePeriod.ALL -> "Year: $selectedSpecificYear"
+                }
+                Text(
+                    text = selectionText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                // Button to open the relevant picker
+                if (selectedPeriod != StatisticsViewModel.TimePeriod.WEEK) { // Only show icon if picker exists
+                    IconButton(
+                        onClick = {
+                            // Open the correct picker based on the selected period
+                            when (selectedPeriod) {
+                                StatisticsViewModel.TimePeriod.TODAY -> showDatePickerDialog = true
+                                StatisticsViewModel.TimePeriod.MONTH -> showMonthYearPickerDialog = true
+                                StatisticsViewModel.TimePeriod.ALL -> showYearPickerDialog = true
+                                StatisticsViewModel.TimePeriod.WEEK -> { /* Should not happen due to outer if */ }
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.DateRange, // Use the calendar icon
+                            // Provide a dynamic content description for accessibility
+                            contentDescription = when (selectedPeriod) {
+                                StatisticsViewModel.TimePeriod.TODAY -> "Change Date"
+                                StatisticsViewModel.TimePeriod.MONTH -> "Change Month"
+                                StatisticsViewModel.TimePeriod.ALL -> "Change Year"
+                                else -> null // Should not happen
+                            },
+                            // Tint the icon using theme colors
+                            tint = MaterialTheme.colorScheme.primary // Or onSurfaceVariant
+                        )
+                    }
+                } else {
+                    // Optional: Add a Spacer or leave empty if no action for WEEK period
+                    Spacer(modifier = Modifier.width(48.dp)) // Match IconButton approx size if needed for alignment
                 }
             }
 
@@ -656,6 +728,59 @@ fun StatisticsScreen(viewModel: StatisticsViewModel) { // Pass your ViewModel in
             Spacer(modifier = Modifier.height(16.dp))
 
         } // End Main Column
+
+        val context = LocalContext.current
+        if (showDatePickerDialog) {
+            val currentSelection = selectedSpecificDate // From VM state
+            val nowCalendar = Calendar.getInstance()
+            android.app.DatePickerDialog(
+                context,
+                { _, year, month, dayOfMonth -> // month is 0-indexed
+                    viewModel.updateSelectedDate(LocalDate.of(year, month + 1, dayOfMonth))
+                    showDatePickerDialog = false // Dismiss
+                },
+                currentSelection.year,
+                currentSelection.monthValue - 1, // Adjust month for dialog (0-indexed)
+                currentSelection.dayOfMonth
+            ).apply {
+                datePicker.maxDate = nowCalendar.timeInMillis
+                setOnDismissListener { showDatePickerDialog = false } // Handle dismiss
+                show()
+            }
+            // LaunchedEffect prevents showing dialog repeatedly on recomposition while visible
+            LaunchedEffect(Unit) { /* Prevents relaunch while visible */ }
+        }
+
+        // --- Month Year Picker Dialog (Using your custom Composable) ---
+        MonthPicker(
+            visible = showMonthYearPickerDialog,
+            // IMPORTANT: MonthPicker expects 0-indexed month, YearMonth is 1-indexed
+            currentMonth = selectedSpecificMonthYear.monthValue - 1,
+            currentYear = selectedSpecificMonthYear.year,
+            confirmButtonCLicked = { month, year -> // month here is 1-indexed from picker
+                viewModel.updateSelectedMonthYear(YearMonth.of(year, month))
+                showMonthYearPickerDialog = false // Dismiss
+            },
+            cancelClicked = {
+                showMonthYearPickerDialog = false // Dismiss
+            }
+        )
+
+        // --- Year Picker Dialog (Using the adapted Composable) ---
+        YearPicker(
+            visible = showYearPickerDialog,
+            currentYear = selectedSpecificYear,
+            // Optional: Provide min/max years if needed, e.g., based on transaction data
+            // minYear = earliestTransactionYear,
+            // maxYear = latestTransactionYear,
+            confirmButtonClicked = { year ->
+                viewModel.updateSelectedYear(year)
+                showYearPickerDialog = false // Dismiss
+            },
+            cancelClicked = {
+                showYearPickerDialog = false // Dismiss
+            }
+        )
     } // End MaterialTheme
 }
 
@@ -897,6 +1022,8 @@ fun DailySpendingChartMP(
     val processedData = rememberProcessedChartData(data, selectedPeriod)
     val timePoints = processedData.timePoints
     val dataMap = processedData.dataMap
+
+
     // *** Use the correct Y max calculation for line charts for ALL periods ***
     val actualMaxAmount = remember(dataMap) {
         dataMap.values.flatMap { it.values }.maxOrNull() ?: 0.0
