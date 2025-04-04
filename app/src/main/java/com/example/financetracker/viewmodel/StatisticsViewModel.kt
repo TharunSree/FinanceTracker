@@ -343,5 +343,6 @@ class StatisticsViewModel(
     // --- Potentially needed math helper function (if moved from Screen) ---
     // Ensure this uses kotlin.math prefixes if needed, though most are extension functions
     // fun calculateNiceAxisValues(...) { ... } // If moved here
+
 }
 
