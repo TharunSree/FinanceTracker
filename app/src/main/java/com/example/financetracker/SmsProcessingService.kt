@@ -12,6 +12,8 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.database.entity.Transaction
+import com.example.financetracker.model.TransactionDetails
+import com.example.financetracker.utils.GeminiMessageExtractor
 import com.example.financetracker.utils.GuestUserManager
 import com.example.financetracker.utils.MessageExtractor
 import com.google.firebase.auth.FirebaseAuth
@@ -97,8 +99,8 @@ class SmsProcessingService : Service() {
 
         Log.d(TAG, "Service started with message from $sender")
 
-        if (messageBody != null) {
-            processMessage(messageBody, smsTimestamp, startId) // Pass startId
+        if (messageBody != null && sender != null) {
+            processMessage(messageBody, sender,smsTimestamp, startId) // Pass startId
         } else {
             Log.e(TAG, "No message body provided in intent")
             stopSelfResult(startId) // Use stopSelfResult
@@ -111,84 +113,88 @@ class SmsProcessingService : Service() {
 // FinanceTracker-master/app/src/main/java/com/example/financetracker/SmsProcessingService.kt
 // with this enhanced version.
 
-    private fun processMessage(messageBody: String, smsTimestamp: Long, startId: Int) {
+    private fun processMessage(messageBody: String, sender: String, smsTimestamp: Long, startId: Int) {
         coroutineScope.launch {
-            // ... (setup: shouldStopService, update notification) ...
+            var shouldStopService = true
             try {
-                Log.d(TAG, "Starting message processing for message received around ${Date(smsTimestamp)}")
-                updateProcessingNotification("Extracting transaction details...")
-                val messageExtractor = MessageExtractor(this@SmsProcessingService)
+                Log.d(TAG, "Processing message from $sender received at ${Date(smsTimestamp)}")
+                updateProcessingNotification("Extracting details...")
+                val geminiExtractor = GeminiMessageExtractor(this@SmsProcessingService) // Ensure it's initialized
 
-                // *** PASS smsTimestamp to the extractor ***
-                val details = messageExtractor.extractTransactionDetails(messageBody) // Pass timestamp
+                // *** FIX: Avoid destructuring, use .first/.second ***
+                val result = geminiExtractor.extractTransactionDetails(messageBody, sender)
+                val details: TransactionDetails? = result.first
+                val type: String? = result.second // 'type' is less used here, but capture it
 
-
-                if (details != null) {
-                    // ... (logging extracted details) ...
-                    // ... (get userId, DAOs) ...
+                if (details != null) { // <<< *** Check if details are not null ***
+                    Log.i(TAG, "Gemini extraction successful. Details: $details")
                     val userId = FirebaseAuth.getInstance().currentUser?.uid ?: GuestUserManager.getGuestUserId(applicationContext)
                     val database = TransactionDatabase.getDatabase(this@SmsProcessingService)
                     val transactionDao = database.transactionDao()
                     val merchantDao = database.merchantDao()
 
-                    // --- Duplicate Check (Use extracted date primarily) ---
-                    // The check uses details.date, which will now be the SMS timestamp if extraction defaulted.
-                    val checkDate = smsTimestamp // Use extracted date or SMS timestamp for check window
-                    val timeWindowMillis = 30000L
+                    // --- Duplicate Check (using SMS timestamp) ---
+                    val checkDate = smsTimestamp
+                    val timeWindowMillis = 60000L
                     val startTime = checkDate - timeWindowMillis
                     val endTime = checkDate + timeWindowMillis
-                    Log.d(TAG, "PROCESS_MESSAGE_DUPE_CHECK - Checking duplicates around ${Date(checkDate)}")
-                    val potentialDuplicates = transactionDao.findPotentialDuplicates(userId, details.amount, startTime, endTime)
-                    var isDuplicate = false
-                    if (potentialDuplicates.isNotEmpty()) {
-                        isDuplicate = potentialDuplicates.any { it.merchant.equals(details.merchant, ignoreCase = true) }
-                        if(isDuplicate) Log.w(TAG, "PROCESS_MESSAGE_DUPE_FOUND - Duplicate confirmed. Skipping insertion.")
+                    val potentialDuplicates = transactionDao.findPotentialDuplicates(userId, details.amount, startTime, endTime) // <<< Use details.amount
+
+                    val isDuplicate = potentialDuplicates.any {
+                        it.merchant.equals(details.merchant, ignoreCase = true) || it.name.equals(details.name, ignoreCase = true) // <<< Use details.merchant / details.name
                     }
-                    if (isDuplicate) return@launch
+
+                    if (isDuplicate) {
+                        Log.w(TAG, "Duplicate transaction detected. Skipping insertion. Details: $details")
+                        return@launch
+                    }
                     // --- End Duplicate Check ---
 
-                    // --- Category Check (as before) ---
-                    var knownCategory: String? = null
-                    if (details.merchant.isNotBlank()) {
-                        knownCategory = merchantDao.getCategoryForMerchant(details.merchant, userId)
-                    }
-
-                    // *** Create Transaction: Use extracted date (which might be smsTimestamp if defaulted), NOT 0L anymore ***
+                    // Create the transaction object
                     val transaction = Transaction(
                         id = 0,
-                        name = details.merchant.ifBlank { "Unknown Merchant" },
-                        amount = details.amount,
-                        date = smsTimestamp, // Use the date from details (could be extracted or the SMS timestamp)
-                        category = knownCategory ?: "",
-                        merchant = details.merchant,
-                        description = details.description,
+                        name = details.name, // <<< Use details.name
+                        amount = details.amount, // <<< Use details.amount
+                        date = smsTimestamp,
+                        category = details.category, // <<< Use details.category
+                        merchant = details.merchant, // <<< Use details.merchant
+                        description = details.description, // <<< Use details.description
                         userId = userId,
-                        documentId = null // Firestore ID added later
+                        documentId = null
                     )
-                    // *** ---------------------------------------------------------------------------------- ***
 
-                    // ... (Log before save, save to Room, save to Firestore, show notification) ...
-                    Log.i(TAG, "PROCESS_MESSAGE_BEFORE_SAVE - Attempting to save transaction: $transaction")
-                    try {
-                        val insertedId = transactionDao.insertTransactionAndGetId(transaction)
-                        if(insertedId > 0) {
-                            transaction.id = insertedId
-                            Log.i(TAG, "PROCESS_MESSAGE_SAVE_SUCCESS - Transaction saved to Room. ID: $insertedId")
-                            // ... (Firestore sync, notifications) ...
-                            if (!GuestUserManager.isGuestMode(userId)) { addTransactionToFirestore(transaction) }
-                            if (knownCategory != null) { showTransactionNotification(transaction) }
-                            else { showDetailsNeededNotification(transaction, messageBody, transaction) }
-                        } else { /* handle insert error */ }
-                    } catch (dbEx: Exception) { /* handle insert exception */ }
+                    // Check if confirmation is needed
+                    val needsConfirmation = details.category.equals("Uncategorized", ignoreCase = true) // <<< Use details.category
+
+                    Log.i(TAG, "Saving transaction to Room: $transaction")
+                    val insertedId = transactionDao.insertTransactionAndGetId(transaction)
+                    transaction.id = insertedId
+
+                    if (insertedId > 0) {
+                        Log.i(TAG, "Transaction saved to Room with ID: $insertedId")
+                        if (!GuestUserManager.isGuestMode(userId)) { addTransactionToFirestore(transaction) }
+
+                        if (needsConfirmation) {
+                            Log.d(TAG, "Category is 'Uncategorized', showing details needed notification.")
+                            showDetailsNeededNotification(transaction, messageBody, transaction)
+                            shouldStopService = false
+                        } else {
+                            Log.d(TAG, "Category '${details.category}' assigned, showing standard notification.") // <<< Use details.category
+                            showTransactionNotification(transaction)
+                        }
+                    } else {
+                        Log.e(TAG, "Failed to insert transaction into Room.")
+                    }
 
                 } else {
-                    Log.w(TAG, "PROCESS_MESSAGE_EXTRACT_FAIL - Could not extract details from message.")
+                    Log.i(TAG, "Gemini determined message is not transactional or failed extraction.")
                 }
 
-            } catch (e: Exception) { /* ... overall error handling ... */ }
-            finally { /* ... stop service ... */ }
-        } // End CoroutineScope
-    }
+            } catch (e: Exception) { /* ... error handling ... */ }
+            finally { /* ... stop service logic ... */ }
+        }
+    } // End processMessage
+
 
 // Make sure the addTransactionToFirestore, showTransactionNotification,
 // showDetailsNeededNotification, and showFailureNotification functions exist

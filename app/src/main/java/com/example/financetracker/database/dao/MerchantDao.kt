@@ -25,6 +25,9 @@ interface MerchantDao {
     @Query("SELECT * FROM merchant_table WHERE name = :name LIMIT 1")
     suspend fun findByName(name: String): Merchant?
 
+    // Add this function inside the @Dao interface MerchantDao { ... }
+    @Query("SELECT * FROM merchant_table ORDER BY name ASC") // Add WHERE userId = :userId if merchants are user-specific
+    suspend fun getAllMerchantsList(): List<Merchant>
     /**
      * Finds a specific merchant entry by name and associated user ID.
      */

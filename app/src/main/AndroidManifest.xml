@@ -39,6 +39,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".ManageSendersActivity"
+            android:exported="false"
+            android:label="Manage Senders"
+            android:parentActivityName=".SettingsActivity"> <meta-data
+            android:name="android.support.PARENT_ACTIVITY"
+            android:value=".SettingsActivity" />
+        </activity>
         <!-- Add this inside the <application> tag -->
         <activity
             android:name=".SettingsActivity"

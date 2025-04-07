@@ -61,19 +61,22 @@ class MessageExtractor(private val context: Context) {
     // Main function that orchestrates extraction - tries Gemini first
     // Returns TransactionDetails or null if extraction fails.
     // Note: Loses the 'type' ("Income"/"Expense") information if Gemini succeeds.
-    suspend fun extractTransactionDetails(message: String): TransactionDetails? {
+    /*suspend fun extractTransactionDetails(message: String): TransactionDetails? {
         Log.d(TAG, "Starting extraction (NO SMS date used internally): $message")
+
         try {
             // Try Gemini AI extraction first
             // Note: Gemini extractor itself doesn't need the timestamp passed if its prompt
             // correctly handles defaulting internally (e.g., "use today's date").
             // However, we will use the smsTimestamp if Gemini *fails* to return a usable date (returns 0L).
-            val (geminiDetails, geminiType) = geminiExtractor.extractTransactionDetails(message) // Gemini call
+            val result = geminiExtractor.extractTransactionDetails(message, sender) // <<< PASS 'sender' HERE
+            val details: TransactionDetails? = result.first
+            val type: String? = result.second // Gemini call
 
-            if (geminiDetails != null) {
+            if (details != null) {
                 // We know date will be 0L here, caller will use SMS timestamp
-                Log.i(TAG, "Using Gemini result (date ignored): $geminiDetails")
-                return geminiDetails
+                Log.i(TAG, "Using Gemini result (date ignored): $details")
+                return details
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error during Gemini extraction, falling back to regex/MLKit", e)
@@ -83,7 +86,7 @@ class MessageExtractor(private val context: Context) {
         Log.d(TAG, "Attempting fallback extraction with Regex/MLKit.")
         // *** Pass smsTimestamp to the internal fallback method ***
         return extractWithRegexAndMlKitInternal(message)
-    }
+    }*/
 
     // Renamed internal function for fallback using ML Kit and Regex
     private suspend fun extractWithRegexAndMlKitInternal(message: String): TransactionDetails? =
