@@ -15,6 +15,7 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
         private const val TAG = "SmsBroadcastReceiver"
         const val EXTRA_SENDER = "sender"
         const val EXTRA_MESSAGE = "message"
+        const val EXTRA_TIMESTAMP = "timestamp"
 
         // Keep currency patterns or move them if desired
         private val currencyPatterns = mapOf(
@@ -48,9 +49,11 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
             val currentFinancialSenders = SenderListManager.getCombinedSenders(context)
             Log.v(TAG, "Using ${currentFinancialSenders.size} senders for filtering.") // Verbose log
 
+
             messages?.forEach { smsMessage ->
                 val sender = smsMessage.displayOriginatingAddress
                 val messageBody = smsMessage.messageBody
+                val timestamp = smsMessage.timestampMillis
 
                 if (sender == null || messageBody == null) {
                     Log.w(TAG, "Received SMS with null sender or body.")
@@ -65,6 +68,7 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
                     val serviceIntent = Intent(context, SmsProcessingService::class.java).apply {
                         putExtra(EXTRA_SENDER, sender)
                         putExtra(EXTRA_MESSAGE, messageBody)
+                        putExtra(EXTRA_TIMESTAMP, timestamp)
                     }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         context.startForegroundService(serviceIntent)

@@ -335,7 +335,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         requestNotificationPermission()
         //setupStatisticsButton()
         setupObservers()
-        setupUncategorizedTransactionObserver()
 
         // Handle intent extras for notifications
         handleIntentExtras(intent)
@@ -597,32 +596,61 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         }
     }
 
-    private fun handleIntentExtras(intent: Intent) {
+    private fun handleIntentExtras(intent: Intent?) {
+        intent ?: return // Do nothing if intent is null
+
+        Log.d(TAG, "handleIntentExtras: Checking intent for SHOW_TRANSACTION_DIALOG flag.")
         if (intent.getBooleanExtra("SHOW_TRANSACTION_DIALOG", false)) {
+            Log.d(TAG, "handleIntentExtras: SHOW_TRANSACTION_DIALOG flag found.")
             val message = intent.getStringExtra("TRANSACTION_MESSAGE")
             val amount = intent.getDoubleExtra("TRANSACTION_AMOUNT", 0.0)
-            val date = intent.getLongExtra("TRANSACTION_DATE", System.currentTimeMillis())
+            // Get date (check if it's the sentinel 0L or a real date)
+            val dateLong = intent.getLongExtra("TRANSACTION_DATE", 0L)
+            val finalDate = if (dateLong == 0L) System.currentTimeMillis() else dateLong // Use current time if extractor defaulted
+
             val merchant = intent.getStringExtra("TRANSACTION_MERCHANT") ?: "Unknown Merchant"
             val description = intent.getStringExtra("TRANSACTION_DESCRIPTION") ?: ""
+            // Note: We might not have the actual Room Transaction ID here yet,
+            // as the service might have just inserted it. We create a temporary
+            // object or pass individual details to the dialog/listener.
+            // Let's recreate a temporary Transaction object for the dialog context.
+            val userId = auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(applicationContext) // Get user ID here
 
-            // Get current user ID
-            val userId = auth.currentUser?.uid ?: return
+            // Find the actual transaction ID passed from the service if available
+            val transactionIdFromIntent = intent.getLongExtra("TRANSACTION_ID", 0L)
 
-            // Create a temporary transaction for the dialog
-            val transaction = Transaction(
-                id = 0,
-                name = merchant,
+            if (transactionIdFromIntent == 0L) {
+                Log.e(TAG, "handleIntentExtras: TRANSACTION_ID is missing in intent. Cannot proceed reliably.")
+                Toast.makeText(this, "Error: Missing transaction reference.", Toast.LENGTH_SHORT).show()
+                // Clear the flag to prevent re-triggering
+                intent.removeExtra("SHOW_TRANSACTION_DIALOG")
+                return
+            }
+
+            // Create a transient Transaction object for the dialog context
+            // IMPORTANT: Use the ID passed from the intent
+            val transactionForDialog = Transaction(
+                id = transactionIdFromIntent, // USE THE ID FROM INTENT
+                name = merchant, // Use extracted name/merchant
                 amount = amount,
-                date = date,
-                category = "Uncategorized",
+                date = finalDate, // Use potentially corrected date
+                category = "Uncategorized", // It's uncategorized by definition here
                 merchant = merchant,
                 description = description,
-                userId = userId
+                userId = userId, // Set the correct user ID
+                documentId = null // Firestore ID likely not known yet
             )
 
-            message?.let {
-                showTransactionDetailsDialog(transaction, it)
-            }
+            Log.d(TAG, "handleIntentExtras: Showing dialog for transaction ID: ${transactionForDialog.id}")
+            showTransactionDetailsDialog(transactionForDialog, message) // Pass the transient object
+
+            // Optional: Prevent the dialog from showing again if the user rotates the screen
+            // or if onNewIntent is called again for the same logical event.
+            // Clear the flag in the intent ONLY after showing the dialog.
+            intent.removeExtra("SHOW_TRANSACTION_DIALOG")
+
+        } else {
+            Log.d(TAG, "handleIntentExtras: SHOW_TRANSACTION_DIALOG flag not found or false.")
         }
     }
 
@@ -845,9 +873,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                 }
 
                 // --- Logic to check for the *next* uncategorized item ---
-                Log.d(TAG, "onDetailsEntered: Re-checking for more uncategorized transactions.")
-                isDialogShowing = false // Reset flag *before* checking again
-                transactionViewModel.checkForUncategorizedTransactions() // Trigger the check again
+            // Trigger the check again
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error updating transaction in onDetailsEntered", e)
@@ -1124,25 +1150,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                 Toast.makeText(this@MainActivity, "Sync failed: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
-    }
-
-    private fun setupUncategorizedTransactionObserver() {
-        transactionViewModel.oldestUncategorizedTransaction.observe(this, Observer { transaction ->
-            if (transaction != null && !isDialogShowing) {
-                Log.d(TAG, "Observer received uncategorized transaction ID: ${transaction.id}. Showing dialog.")
-                isDialogShowing = true // Set flag
-                // Call your existing dialog showing function.
-                // It now gets triggered by this observer OR the notification intent.
-                // We might not have the original message body here, pass null or empty string.
-                showTransactionDetailsDialog(transaction, "") // Pass empty string for messageBody
-            } else if (transaction == null) {
-                Log.d(TAG, "Observer received null (no uncategorized transactions or check completed).")
-                // Reset flag if necessary, though onDetailsEntered handles the primary loop reset
-                // isDialogShowing = false; // Might cause issues if called too early
-            } else {
-                Log.d(TAG, "Observer received transaction but dialog is already showing/managed.")
-            }
-        })
     }
 
     enum class FilterPeriod {

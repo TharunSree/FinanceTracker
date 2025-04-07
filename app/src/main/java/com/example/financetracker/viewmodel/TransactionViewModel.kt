@@ -3,6 +3,7 @@ package com.example.financetracker.viewmodel
 import android.app.Application
 import android.content.Context
 import android.provider.Telephony
+import android.database.Cursor
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
@@ -24,6 +25,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable.isCancelled
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -67,8 +69,8 @@ class TransactionViewModel(
     private val _scanProgress = MutableLiveData<String>() // For detailed progress updates
     val scanProgress: LiveData<String> = _scanProgress
 
-    private val _scanStatus = MutableLiveData<String>()
-    val scanStatus: LiveData<String> = _scanStatus
+    private val _scanStatus = MutableLiveData<String?>()
+    val scanStatus: MutableLiveData<String?> = _scanStatus
 
     // Loading state
     private val _loading = MutableLiveData<Boolean>()
@@ -76,8 +78,6 @@ class TransactionViewModel(
 
     // Inside TransactionViewModel class...
 
-    private val _oldestUncategorizedTransaction = MutableLiveData<Transaction?>()
-    val oldestUncategorizedTransaction: LiveData<Transaction?> = _oldestUncategorizedTransaction
 
     private val defaultCategories = listOf( // Make sure this list is populated
         "Food & Dining", "Groceries", "Transportation", "Utilities", "Rent/Mortgage",
@@ -180,32 +180,6 @@ class TransactionViewModel(
         } catch (e: Exception) {
             Log.e("TransactionViewModel", "Error loading initial data", e)
             _errorMessage.postValue("Error loading initial data: ${e.message}")
-        }
-    }
-
-    fun checkForUncategorizedTransactions() {
-        viewModelScope.launch {
-            val userId = getCurrentUserId() // Use existing helper to get ID
-            if (userId == null) {
-                _oldestUncategorizedTransaction.postValue(null) // Post null if no user
-                return@launch
-            }
-            try {
-                // Fetch the oldest uncategorized transaction using the DAO
-                val transaction = withContext(Dispatchers.IO) {
-                    transactionDao.getOldestUncategorizedTransaction(userId)
-                }
-                _oldestUncategorizedTransaction.postValue(transaction) // Post result (null or transaction)
-                if (transaction != null) {
-                    Log.d(TAG, "Found oldest uncategorized transaction: ID ${transaction.id}")
-                } else {
-                    Log.d(TAG, "No uncategorized transactions found for user $userId.")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error checking for uncategorized transactions", e)
-                _errorMessage.postValue("Error finding transactions to categorize.")
-                _oldestUncategorizedTransaction.postValue(null) // Post null on error
-            }
         }
     }
 
@@ -437,25 +411,6 @@ class TransactionViewModel(
         // No finally block needed here if updateTransaction reliably handles it.
     }
 
-    private suspend fun processScannedMessage(context: Context, messageBody: String) {
-        Log.d("SmsScan", "Processing scanned message...")
-        // Reuse extraction logic
-        val extractor = MessageExtractor(context)
-        val details = extractor.extractTransactionDetails(messageBody)
-
-        if (details != null) {
-            // Reuse duplicate check logic (needs DAO access, maybe pass from ViewModel or repo)
-            // val isDuplicate = checkForDuplicate(details, userId, transactionDao)
-            // if (!isDuplicate) {
-            // Reuse saving logic (needs DAO access)
-            // saveTransaction(details, userId, transactionDao)
-            Log.d("SmsScan", "Found potential transaction (Simulated Save): $details")
-            // } else {
-            //     Log.d("SmsScan", "Skipping duplicate scanned transaction: $details")
-            // }
-        }
-    }
-
     private fun isFinancialMessageScan(sender: String, message: String, allowedSenders: Set<String>): Boolean {
         val smsReceiver = SmsBroadcastReceiver() // Need instance or make methods static/object
         // TODO: Call the filtering logic, potentially adapting it for scanning needs
@@ -464,119 +419,159 @@ class TransactionViewModel(
     }
 
     fun scanPastSmsForTransactions(context: Context, period: ScanPeriod) {
+        // Get user ID first, fail early if not available
         val userId = getCurrentUserId() ?: run {
-            _errorMessage.postValue("User ID not found for scanning.")
+            _errorMessage.postValue("User ID not found. Cannot perform scan.")
+            _scanStatus.postValue("Error: User not found")
             return
         }
+
         viewModelScope.launch {
             _loading.postValue(true)
-            _scanProgress.postValue("Starting SMS scan...")
+            _scanStatus.postValue("Starting SMS scan...")
+            _scanProgress.postValue("Calculating date range...")
             var processedCount = 0
             var addedCount = 0
             var duplicateCount = 0
+            var financialMsgCount = 0
             var failedExtractionCount = 0
+            var permissionError = false
+            var cursorError = false
 
-            withContext(Dispatchers.IO) { // Perform query and processing off the main thread
+            // Perform query and processing in IO context
+            withContext(Dispatchers.IO) {
+                var cursor: Cursor? = null // Declare cursor outside try-catch
                 try {
                     // 1. Calculate Time Range
                     val calendar = Calendar.getInstance()
                     val endTime = calendar.timeInMillis
                     when (period) {
                         ScanPeriod.LAST_MONTH -> calendar.add(Calendar.MONTH, -1)
-                        ScanPeriod.ALL_TIME -> calendar.timeInMillis = 0 // Or a reasonable earliest date
+                        ScanPeriod.ALL_TIME -> calendar.timeInMillis = 0
                     }
                     val startTime = calendar.timeInMillis
-                    Log.d(TAG, "Scanning SMS from ${Date(startTime)} to ${Date(endTime)}")
+                    Log.d(TAG, "[SMS Scan] Scanning from ${Date(startTime)} to ${Date(endTime)}")
+                    _scanProgress.postValue("Querying messages...")
 
                     // 2. Query SMS Content Provider
                     val selection = "${Telephony.Sms.Inbox.DATE} BETWEEN ? AND ?"
                     val selectionArgs = arrayOf(startTime.toString(), endTime.toString())
-                    val cursor = context.contentResolver.query(
-                        Telephony.Sms.Inbox.CONTENT_URI,
-                        arrayOf(Telephony.Sms.Inbox.ADDRESS, Telephony.Sms.Inbox.BODY, Telephony.Sms.Inbox.DATE),
-                        selection,
-                        selectionArgs,
-                        Telephony.Sms.Inbox.DATE + " DESC" // Process newer messages first might be better
+                    val projection = arrayOf(
+                        Telephony.Sms.Inbox.ADDRESS,
+                        Telephony.Sms.Inbox.BODY,
+                        Telephony.Sms.Inbox.DATE,
+                        Telephony.Sms.Inbox._ID // Include ID for logging uniqueness if needed
                     )
 
-                    // 3. Load necessary data for filtering/processing
-                    val allowedSenders = SenderListManager.getCombinedSenders(context)
-                    val extractor = MessageExtractor(context) // Create extractor instance
+                    // Use application context to avoid leaking Activity context
+                    val appContext = getApplication<Application>().applicationContext
+                    cursor = appContext.contentResolver.query(
+                        Telephony.Sms.Inbox.CONTENT_URI,
+                        projection,
+                        selection,
+                        selectionArgs,
+                        Telephony.Sms.Inbox.DATE + " DESC" // Process newer first
+                    )
+
+                    // 3. Load senders list
+                    val allowedSenders = SenderListManager.getCombinedSenders(appContext)
+                    val extractor = MessageExtractor(appContext) // Use app context
 
                     // 4. Iterate and Process
-                    cursor?.use {
-                        val totalMessages = it.count // Get total count for progress
-                        Log.d(TAG, "Found $totalMessages messages in the specified period.")
-                        _scanProgress.postValue("Found $totalMessages messages...")
-
-
-                        val addressIndex = it.getColumnIndexOrThrow(Telephony.Sms.Inbox.ADDRESS)
-                        val bodyIndex = it.getColumnIndexOrThrow(Telephony.Sms.Inbox.BODY)
-                        val dateIndex = it.getColumnIndexOrThrow(Telephony.Sms.Inbox.DATE)
-
-                        while (it.moveToNext()) {
-                            processedCount++
-                            if (processedCount % 50 == 0) { // Update progress periodically
-                                _scanProgress.postValue("Processed $processedCount / $totalMessages messages...")
+                    if (cursor == null) {
+                        Log.e(TAG, "[SMS Scan] ContentResolver query returned null cursor.")
+                        _errorMessage.postValue("Failed to query SMS messages.")
+                        _scanStatus.postValue("Error: Query Failed")
+                        cursorError = true
+                    } else {
+                        cursor.use { // Safely handle cursor closing
+                            val totalMessages = it.count
+                            Log.d(TAG, "[SMS Scan] Found $totalMessages messages in period.")
+                            if (totalMessages == 0) {
+                                _scanProgress.postValue("No messages found in the selected period.")
+                            } else {
+                                _scanProgress.postValue("Found $totalMessages messages. Processing...")
                             }
 
-                            val sender = it.getString(addressIndex)
-                            val body = it.getString(bodyIndex)
-                            val date = it.getLong(dateIndex) // SMS timestamp
+                            val addressIndex = it.getColumnIndexOrThrow(Telephony.Sms.Inbox.ADDRESS)
+                            val bodyIndex = it.getColumnIndexOrThrow(Telephony.Sms.Inbox.BODY)
+                            val dateIndex = it.getColumnIndexOrThrow(Telephony.Sms.Inbox.DATE)
+                            // val idIndex = it.getColumnIndexOrThrow(Telephony.Sms.Inbox._ID) // Optional for logging
 
-                            if (sender != null && body != null) {
-                                // Use the filtering logic (adapt from receiver or create shared util)
-                                if (isFinancialMessageScan(sender, body, allowedSenders)) {
-                                    Log.v(TAG, "Potential financial message found from $sender during scan.")
-                                    // Process message: Extract -> Check Duplicate -> Save
-                                    val details = extractor.extractTransactionDetails(body)
-
-                                    if (details != null) {
-                                        // Use a stricter duplicate check for scanned items
-                                        val isDuplicate = checkForDuplicateScan(details, userId, date) // Pass SMS date too
-                                        if (!isDuplicate) {
-                                            // Create Transaction object (use extracted date, default to SMS date if needed)
-                                            val transaction = Transaction(
-                                                id = 0, // Room generates
-                                                name = details.merchant.ifBlank { "Unknown Merchant" },
-                                                amount = details.amount,
-                                                date = details.date, // Use extracted date
-                                                category = details.category.ifBlank { "Uncategorized" }, // Use extracted or default
-                                                merchant = details.merchant,
-                                                description = details.description.ifBlank { "Scanned from SMS" },
-                                                userId = userId,
-                                                documentId = null // Will be set during sync if needed
-                                            )
-                                            // Add using the regular addTransaction logic (handles DB+Firestore)
-                                            addTransaction(transaction) // Call the existing ViewModel method
-                                            addedCount++
-                                            Log.i(TAG, "Added transaction from scanned SMS: ${details.merchant} / ${details.amount}")
-                                        } else {
-                                            duplicateCount++
-                                            Log.d(TAG, "Skipping duplicate scanned transaction: ${details.merchant} / ${details.amount}")
-                                        }
-                                    } else {
-                                        failedExtractionCount++
-                                        Log.w(TAG, "Failed to extract details from scanned financial message: $body")
+                            while (it.moveToNext() && !isCancelled) { // Check coroutine cancellation
+                                processedCount++
+                                if (processedCount % 100 == 0 || processedCount == totalMessages) {
+                                    // Update progress on Main thread periodically
+                                    withContext(Dispatchers.Main) {
+                                        _scanProgress.postValue("Processed $processedCount / $totalMessages...")
                                     }
                                 }
-                            }
-                        } // end while loop
-                    } // end cursor.use
 
-                    Log.i(TAG, "Finished scanning past SMS. Processed: $processedCount, Added: $addedCount, Duplicates: $duplicateCount, Failed Extraction: $failedExtractionCount")
-                    _scanProgress.postValue("Scan Complete! Added $addedCount new transactions.")
+                                val sender = it.getString(addressIndex)
+                                val body = it.getString(bodyIndex)
+                                val smsDate = it.getLong(dateIndex)
+                                // val smsId = it.getLong(idIndex) // Optional
 
+                                if (sender != null && body != null) {
+                                    // Check if financial message
+                                    if (isFinancialMessageScan(sender, body, allowedSenders)) {
+                                        financialMsgCount++
+                                        Log.v(TAG, "[SMS Scan] Potential financial msg from $sender: $body")
+                                        val details = extractor.extractTransactionDetails(body, smsDate) // Pass SMS date
+                                        // Extract details
+
+
+                                        if (details != null) {
+                                            // Check for duplicates (using the stricter scan check)
+                                            val isDuplicate = checkForDuplicateScan(details, userId, smsDate)
+                                            if (!isDuplicate) {
+                                                val transaction = Transaction(
+                                                    id = 0, // Let Room generate
+                                                    name = details.merchant.ifBlank { "Unknown Merchant" },
+                                                    amount = details.amount,
+                                                    date = details.date, // Use extracted date, fallback to SMS date if extractor defaulted
+                                                    category = details.category.ifBlank { "Uncategorized" },
+                                                    merchant = details.merchant,
+                                                    description = details.description.ifBlank { "Scanned from SMS" },
+                                                    userId = userId,
+                                                    documentId = null
+                                                )
+                                                // Add transaction (handles Room+Firestore sync)
+                                                // Launch separate coroutine for DB to avoid blocking scan loop?
+                                                // Might be too many launches - consider batching adds later if needed.
+                                                launch(Dispatchers.IO) { addTransaction(transaction) } // Launch DB operation separately
+                                                addedCount++
+                                            } else { duplicateCount++ }
+                                        } else { failedExtractionCount++ }
+                                    }
+                                }
+                            } // end while
+                        } // end cursor.use
+                    }
                 } catch (e: SecurityException) {
-                    Log.e(TAG, "READ_SMS permission missing for scan.", e)
+                    permissionError = true
+                    Log.e(TAG, "[SMS Scan] READ_SMS permission missing.", e)
                     _errorMessage.postValue("Permission needed to scan SMS.")
                     _scanStatus.postValue("Permission Error")
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error scanning past SMS", e)
+                    Log.e(TAG, "[SMS Scan] Error during scan process", e)
                     _errorMessage.postValue("Error during SMS scan: ${e.message}")
                     _scanStatus.postValue("Error")
                 } finally {
-                    _loading.postValue(false)
+                    // Ensure loading and final status are set on Main thread
+                    withContext(Dispatchers.Main) {
+                        _loading.postValue(false)
+                        val finalStatus = when {
+                            permissionError -> "Permission Error"
+                            cursorError -> "Error: Query Failed"
+                            scanStatus.value?.startsWith("Error") == true -> scanStatus.value // Keep specific error
+                            else -> "Scan Complete! Found $financialMsgCount financial messages. Added: $addedCount, Duplicates: $duplicateCount, Failed Extract: $failedExtractionCount"
+                        }
+                        _scanStatus.postValue(finalStatus)
+                        Log.i(TAG, "[SMS Scan] Final Status: $finalStatus")
+                        // Optionally clear progress message after a delay
+                        // launch { kotlinx.coroutines.delay(5000); _scanProgress.postValue("") }
+                    }
                 }
             } // end withContext(IO)
         } // end viewModelScope.launch

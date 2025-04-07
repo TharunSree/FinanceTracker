@@ -17,37 +17,43 @@ import androidx.preference.SwitchPreferenceCompat
 import com.example.financetracker.R
 import com.google.firebase.auth.FirebaseAuth
 import android.Manifest
+import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
 import com.example.financetracker.utils.SenderListManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.appcompat.app.AlertDialog
+import androidx.fragment.app.viewModels
+import com.example.financetracker.database.TransactionDatabase
+import com.example.financetracker.viewmodel.TransactionViewModel
 
 class GeneralSettingsFragment : PreferenceFragmentCompat(),
     SharedPreferences.OnSharedPreferenceChangeListener {
 
     private lateinit var auth: FirebaseAuth
     private val TAG = "GeneralSettingsFragment"
+    private val transactionViewModel: TransactionViewModel by viewModels {
+        // Provide the Factory if needed (same as used in your Activities/other Fragments)
+        TransactionViewModel.Factory(
+            TransactionDatabase.getDatabase(requireActivity().applicationContext),
+            requireActivity().application
+        )
+    }
+
+    private var pendingAction: (() -> Unit)? = null // Store pending action
 
     private val requestSmsPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
             if (isGranted) {
                 Log.d(TAG, "READ_SMS permission granted.")
-                // You might need to store which action was pending and trigger it now
-                // For simplicity, just inform the user to tap again.
-                Toast.makeText(
-                    requireContext(),
-                    "Permission granted. Please tap the option again.",
-                    Toast.LENGTH_LONG
-                ).show()
+                // Execute the pending action if permission was just granted
+                pendingAction?.invoke()
+                pendingAction = null // Clear the pending action
             } else {
                 Log.w(TAG, "READ_SMS permission denied.")
-                Toast.makeText(
-                    requireContext(),
-                    "SMS Reading permission is required for this feature.",
-                    Toast.LENGTH_LONG
-                ).show()
+                Toast.makeText(requireContext(), "SMS Reading permission is required for this feature.", Toast.LENGTH_LONG).show()
+                pendingAction = null // Clear if denied
             }
         }
 
@@ -65,8 +71,11 @@ class GeneralSettingsFragment : PreferenceFragmentCompat(),
 
         findPreference<Preference>("scan_past_transactions")?.setOnPreferenceClickListener {
             if (hasSmsPermission()) {
-                triggerTransactionScan()
+                // *** Show choice dialog instead of directly triggering scan ***
+                showScanPeriodChoiceDialog()
             } else {
+                // Store intent to show dialog after permission grant? Or just ask user to tap again.
+                pendingAction = ::showScanPeriodChoiceDialog // Store the action
                 requestSmsPermission()
             }
             true // Indicate the click was handled
@@ -76,9 +85,10 @@ class GeneralSettingsFragment : PreferenceFragmentCompat(),
             if (hasSmsPermission()) {
                 triggerSenderScan()
             } else {
+                pendingAction = ::triggerSenderScan // Store the action
                 requestSmsPermission()
             }
-            true // Indicate the click was handled
+            true
         }
 
         // Handle export data preference
@@ -119,6 +129,26 @@ class GeneralSettingsFragment : PreferenceFragmentCompat(),
         setupInitialPreferenceValues()
     }
 
+    private fun showScanPeriodChoiceDialog() {
+        val periods = arrayOf("Last Month", "All Time") // Options for the user
+        AlertDialog.Builder(requireContext())
+            .setTitle("Scan SMS For Transactions")
+            .setItems(periods) { dialog, which ->
+                val selectedPeriod = when (which) {
+                    0 -> TransactionViewModel.ScanPeriod.LAST_MONTH
+                    1 -> TransactionViewModel.ScanPeriod.ALL_TIME
+                    else -> TransactionViewModel.ScanPeriod.LAST_MONTH // Default
+                }
+                dialog.dismiss() // Dismiss the choice dialog
+                // Now trigger the scan with the selected period
+                triggerTransactionScan(selectedPeriod)
+            }
+            .setNegativeButton("Cancel") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .show()
+    }
+
     private fun hasSmsPermission(): Boolean {
         return requireActivity().checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
     }
@@ -129,21 +159,26 @@ class GeneralSettingsFragment : PreferenceFragmentCompat(),
         requestSmsPermissionLauncher.launch(Manifest.permission.READ_SMS)
     }
 
-    private fun triggerTransactionScan() {
-        Toast.makeText(requireContext(), "Starting scan for past transactions...", Toast.LENGTH_SHORT).show()
-        Log.d(TAG, "Triggering transaction scan")
-        // TODO: Call the actual scanning logic here
-        // Example: viewModel.scanPastSmsForTransactions(requireContext(), ScanPeriod.LAST_MONTH)
-        // This function needs to be implemented (e.g., in TransactionViewModel)
-        // It should query SMS, process them in the background, check duplicates, and save.
-        showProgressDialog("Scanning Past Transactions...") // Show progress
-        lifecycleScope.launch {
-            // Simulate background work
-            kotlinx.coroutines.delay(3000) // Replace with actual SMS query/processing
-            withContext(Dispatchers.Main) {
-                hideProgressDialog() // Hide progress
-                Toast.makeText(requireContext(), "Past transaction scan complete (Simulated).", Toast.LENGTH_LONG).show()
+    private fun triggerTransactionScan(period: TransactionViewModel.ScanPeriod) {
+        val periodText = if (period == TransactionViewModel.ScanPeriod.LAST_MONTH) "last month" else "all time"
+        Toast.makeText(requireContext(), "Starting scan for $periodText...", Toast.LENGTH_SHORT).show()
+        Log.d(TAG, "Triggering transaction scan for period: $period")
+        showProgressDialog("Scanning SMS ($periodText)...") // Update progress dialog message
+
+        // Call the ViewModel function with the selected period
+        transactionViewModel.scanPastSmsForTransactions(requireContext(), period)
+
+        // Observe status and progress (no change needed here)
+        transactionViewModel.scanStatus.observe(viewLifecycleOwner) { status ->
+            if (status != null) {
+                if (status.startsWith("Scan Complete") || status.startsWith("Error") || status == "Permission Error") {
+                    hideProgressDialog()
+                    Toast.makeText(requireContext(), status, Toast.LENGTH_LONG).show()
+                }
             }
+        }
+        transactionViewModel.scanProgress.observe(viewLifecycleOwner) { progress ->
+            progressDialog?.setMessage(progress)
         }
     }
 

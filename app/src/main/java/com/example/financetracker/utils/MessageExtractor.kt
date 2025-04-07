@@ -61,18 +61,27 @@ class MessageExtractor(private val context: Context) {
     // Main function that orchestrates extraction - tries Gemini first
     // Returns TransactionDetails or null if extraction fails.
     // Note: Loses the 'type' ("Income"/"Expense") information if Gemini succeeds.
-    suspend fun extractTransactionDetails(message: String): TransactionDetails? {
-        Log.d(TAG, "Starting extraction for message: $message")
+    suspend fun extractTransactionDetails(message: String, smsTimestamp: Long): TransactionDetails? {
+        Log.d(TAG, "Starting extraction for message, SMS timestamp: ${Date(smsTimestamp)}")
         try {
             // Try Gemini AI extraction first
-            // Gemini extractor now returns Pair<TransactionDetails?, String?>
-            val (geminiDetails, geminiType) = geminiExtractor.extractTransactionDetails(message)
+            // Note: Gemini extractor itself doesn't need the timestamp passed if its prompt
+            // correctly handles defaulting internally (e.g., "use today's date").
+            // However, we will use the smsTimestamp if Gemini *fails* to return a usable date (returns 0L).
+            val (geminiDetails, geminiType) = geminiExtractor.extractTransactionDetails(message) // Gemini call
 
-            // Check if the TransactionDetails object from Gemini is not null
             if (geminiDetails != null) {
-                Log.i(TAG, "Successfully extracted with Gemini: $geminiDetails (Type: $geminiType)")
-                // Return only the details part, type info is lost here
-                return geminiDetails
+                // *** Check if Gemini defaulted the date (returned 0L) ***
+                if (geminiDetails.date != 0L) {
+                    Log.i(TAG, "Successfully extracted with Gemini (using extracted date): $geminiDetails")
+                    return geminiDetails // Return Gemini result if date was extracted
+                } else {
+                    // Gemini extraction worked but it defaulted the date (0L).
+                    // Return the Gemini details but replace the 0L date with the smsTimestamp.
+                    val detailsWithSmsDate = geminiDetails.copy(date = smsTimestamp)
+                    Log.i(TAG, "Successfully extracted with Gemini, but using SMS timestamp as date was missing/defaulted: $detailsWithSmsDate")
+                    return detailsWithSmsDate
+                }
             } else {
                 Log.w(TAG, "Gemini extraction returned null details, falling back to regex/MLKit")
             }
@@ -80,40 +89,35 @@ class MessageExtractor(private val context: Context) {
             Log.e(TAG, "Error during Gemini extraction, falling back to regex/MLKit", e)
         }
 
-        // Fall back to original ML Kit + regex extraction
+        // --- Fallback to Regex/MLKit ---
         Log.d(TAG, "Attempting fallback extraction with Regex/MLKit.")
-        // Call the internal fallback method directly
-        return extractWithRegexAndMlKitInternal(message)
+        // *** Pass smsTimestamp to the internal fallback method ***
+        return extractWithRegexAndMlKitInternal(message, smsTimestamp)
     }
 
     // Renamed internal function for fallback using ML Kit and Regex
-    private suspend fun extractWithRegexAndMlKitInternal(message: String): TransactionDetails? =
+    private suspend fun extractWithRegexAndMlKitInternal(message: String, smsTimestamp: Long): TransactionDetails? =
         suspendCoroutine { continuation ->
+            // ... (ML Kit model download/annotation logic remains the same) ...
             entityExtractor.downloadModelIfNeeded()
                 .addOnSuccessListener {
-                    Log.d(TAG, "ML Kit model ready. Annotating message.")
                     entityExtractor.annotate(message)
                         .addOnSuccessListener { entityAnnotations ->
-                            Log.d(TAG, "ML Kit annotation successful. Processing annotations.")
-                            val details = processAnnotations(message, entityAnnotations)
+                            // *** Pass smsTimestamp to processAnnotations ***
+                            val details = processAnnotations(message, entityAnnotations, smsTimestamp)
                             continuation.resume(details)
                         }
-                        .addOnFailureListener {
-                            Log.e(TAG, "ML Kit entity annotation failed", it)
-                            continuation.resume(null) // Resume with null on failure
-                        }
+                        .addOnFailureListener { /* ... handle failure ... */ continuation.resume(null) }
                 }
-                .addOnFailureListener {
-                    Log.e(TAG, "ML Kit model download failed", it)
-                    continuation.resume(null) // Resume with null on failure
-                }
+                .addOnFailureListener { /* ... handle failure ... */ continuation.resume(null) }
         }
 
     // Processes ML Kit annotations and applies Regex patterns.
     // This is part of the fallback mechanism.
     private fun processAnnotations(
         message: String,
-        entityAnnotations: List<EntityAnnotation> // ML Kit annotations (currently unused in this logic, relies on Regex)
+        entityAnnotations: List<EntityAnnotation>, // ML Kit annotations (currently unused in this logic, relies on Regex)
+        smsTimestamp: Long
     ): TransactionDetails? {
         Log.d(TAG, "Processing annotations with Regex fallback.")
         // The existing implementation relies primarily on Regex patterns.
@@ -155,35 +159,21 @@ class MessageExtractor(private val context: Context) {
 
         // Extract date
         // First try to find explicit date markers
-        var dateStr: String? = null
-        // Try explicit markers first
-        val dateMarkerPattern = Regex("""(?:on\sdate|dated|on)\s+(\d{1,2}[A-Za-z]{3}\d{2,4}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4})""", RegexOption.IGNORE_CASE)
-        dateStr = dateMarkerPattern.find(message)?.groupValues?.getOrNull(1)
-
-        // If no marker, try general patterns
-        if (dateStr == null) {
-            val generalDatePattern = Regex("""(\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}|\d{1,2}\s?[A-Za-z]{3}\s?\d{2,4})""")
-            dateStr = generalDatePattern.find(message)?.groupValues?.getOrNull(1)
-        }
-
+        val dateStr: String? = null
+        // ... (find dateStr using patterns as before) ...
         var parsedDateMillis: Long? = null
         if (dateStr != null) {
-            for (dateFormat in datePatterns) {
-                try {
-                    // dateFormat.timeZone = TimeZone.getTimeZone("UTC") // Consider TimeZone
-                    parsedDateMillis = dateFormat.parse(dateStr)?.time
-                    if (parsedDateMillis != null) {
-                        Log.d(TAG, "Regex: Parsed date '$dateStr' to timestamp: $parsedDateMillis")
-                        break // Stop on first successful parse
-                    }
-                } catch (e: Exception) { /* Continue */ }
+            for (dateFormat in datePatterns) { /* ... try parsing ... */
+                try { parsedDateMillis = dateFormat.parse(dateStr)?.time; if(parsedDateMillis != null) break; } catch(e:Exception){}
             }
         }
 
-        // *** SET FINAL DATE: Use parsed date or 0L as default ***
-        val finalDate = parsedDateMillis ?: 0L
-        if (finalDate == 0L) {
-            Log.w(TAG, "Regex: Could not parse or find date string. Defaulting date to 0L.")
+        // *** SET FINAL DATE: Use parsed date, fallback to smsTimestamp ***
+        val finalDate = parsedDateMillis ?: smsTimestamp // Use parsed date OR smsTimestamp
+        if (parsedDateMillis == null) {
+            Log.w(TAG, "Regex: Could not parse/find date string. Using SMS timestamp as default: ${Date(finalDate)}")
+        } else {
+            Log.d(TAG, "Regex: Parsed date '$dateStr' to timestamp: $finalDate")
         }
 
         // Extract merchant

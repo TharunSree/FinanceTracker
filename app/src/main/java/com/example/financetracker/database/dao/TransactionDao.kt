@@ -157,13 +157,4 @@ interface TransactionDao {
         startTimeMillis: Long,
         endTimeMillis: Long
     ): List<Transaction>
-
-    @Query("""
-        SELECT * FROM transactions
-        WHERE userId = :userId AND (category IS NULL OR category = '' OR category = 'Uncategorized')
-        ORDER BY date ASC
-        LIMIT 1
-    """)
-    suspend fun getOldestUncategorizedTransaction(userId: String): Transaction? // Added suspend fun returning nullable Transaction
-
 }

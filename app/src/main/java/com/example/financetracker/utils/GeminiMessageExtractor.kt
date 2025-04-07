@@ -152,27 +152,27 @@ class GeminiMessageExtractor(
                         // Parse the date string and convert to Long timestamp (milliseconds since epoch).
                         // Use UTC for parsing to avoid timezone issues before conversion.
                         var dateLong: Long
-                        var wasDateExtracted = false // Flag to track if date came from SMS/Gemini
+                        var wasDateExtracted = false
                         if (dateString.isNotEmpty()) {
                             try {
                                 val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH)
-                                sdf.timeZone = TimeZone.getTimeZone("UTC") // Use UTC for parsing consistency
+                                sdf.timeZone = TimeZone.getTimeZone("UTC")
                                 val parsedDate = sdf.parse(dateString)
                                 if (parsedDate != null) {
                                     dateLong = parsedDate.time
-                                    wasDateExtracted = true // Successfully parsed a date string
-                                    Log.d(TAG, "Gemini: Parsed date '$dateString' to timestamp: $dateLong")
+                                    wasDateExtracted = true
                                 } else {
-                                    Log.w(TAG, "Gemini: Parsing date string '$dateString' returned null. Defaulting date to 0L.")
-                                    dateLong = 0L // Use 0L if parsing returns null
+                                    // *** Use 0L as indicator that Gemini failed to parse/provide date ***
+                                    dateLong = 0L
                                 }
                             } catch (e: Exception) {
-                                Log.e(TAG, "Gemini: Error parsing date string '$dateString'. Defaulting date to 0L.", e)
-                                dateLong = 0L // Use 0L on parsing error
+                                dateLong = 0L // Use 0L on error
                             }
                         } else {
-                            Log.w(TAG, "Gemini: Date string was empty. Defaulting date to 0L.")
-                            dateLong = 0L // Use 0L if date string is empty
+                            dateLong = 0L // Use 0L if date string empty
+                        }
+                        if (!wasDateExtracted) {
+                            Log.w(TAG, "Gemini: Date string empty or parsing failed. Date defaulted to 0L (will use SMS timestamp).")
                         }
 
                         // Create the TransactionDetails object based on the user's definition.
