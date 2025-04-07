@@ -729,6 +729,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                 if (userId != null) {
                     Toast.makeText(this, "Refreshing data...", Toast.LENGTH_SHORT).show()
                     transactionViewModel.stopListeningToTransactions()
+                    transactionViewModel.clearTransactions()
                     transactionViewModel.startListeningToTransactions(userId)
                 }
                 return true
@@ -773,7 +774,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
         val dialog = TransactionDetailsDialog.newInstance(
             originalMerchant = transaction.name,
-            messageBody = messageBody
         )
         dialog.show(supportFragmentManager, "TransactionDetailsDialog")
     }

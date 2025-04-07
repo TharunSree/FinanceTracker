@@ -52,6 +52,9 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE id = :id")
     suspend fun getTransactionById(id: Int): Transaction?
 
+    @Query("UPDATE transactions SET userId = :newUserId WHERE userId = :oldUserId")
+    suspend fun updateUserIdForGuest(oldUserId: String, newUserId: String): Int // Returns number of rows updated
+
     /**
      * Get all transactions for a specific category.
      */

@@ -98,14 +98,44 @@
     <string name="gemini_api_key">"AIzaSyCiLRbbzBOwg3_N20EuRn1AST4Bn7owpNQ"</string>
 
     <string name="dialog_placeholder_loading">Loading...</string>
-
+    <string name="transaction_saved">Transaction saved successfully</string>
+    <string name="transaction_updated">Transaction updated successfully</string>
+    <string name="amount_max_two_decimals"></string>
     <string name="merchant_optional">Merchant (Optional)</string>
+    <string name="hint_transaction_name">Transaction Name / Purpose</string>
+    <string name="hint_transaction_amount">Amount</string>
+    <string name="hint_transaction_date">Date</string>
+    <string name="hint_category">Category</string>
+    <string name="hint_transaction_merchant_optional">Merchant (Optional)</string>
+    <string name="hint_transaction_description_optional">Description (Optional)</string>
+    <string name="button_save_transaction">Save Transaction</string>
+    <string name="edit_transaction_details">Edit Details</string>
+    <string name="hint_transaction_merchant">Merchant</string>
 
+    <string name="checkbox_save_pattern">Save as pattern for this merchant</string>
+
+    <string name="merchant_cannot_be_empty">Merchant cannot be empty</string>
+    <string name="select_category_error">Please select a category</string>
+
+
+
+    <string name="select_date_error">Please select a transaction date</string>
+
+
+    <string name="select_valid_category">Please select a valid category from the list</string>
+    <string name="select_valid_category_toast">Please select a valid category</string>
+    <string name="no_categories_found">No categories found.</string>
+    <string name="no_categories_setup">No categories found. Please set up categories first.</string>
+    <string name="category_loading_failed">Failed to load categories</string>
 
     <string name="error_category_required">Category is required</string>
 
-    <string name="dialog_edit_name_prefix">Name: %s</string> <string name="dialog_edit_amount_prefix">Amount: ₹%s</string> <string name="dialog_edit_date_prefix">Date: %s</string> <string name="title_add_transaction">Add Transaction</string>
-    <string name="title_edit_transaction">Edit Transaction</string> <string name="purpose_cannot_be_empty">Purpose cannot be empty</string>
+    <string name="dialog_edit_name_prefix">Name: %s</string>
+    <string name="dialog_edit_amount_prefix">Amount: ₹%s</string>
+    <string name="dialog_edit_date_prefix">Date: %s</string>
+    <string name="title_add_transaction">Add Transaction</string>
+    <string name="title_edit_transaction">Edit Transaction</string>
+    <string name="purpose_cannot_be_empty">Purpose cannot be empty</string>
     <string name="enter_valid_positive_amount">Please enter a valid positive amount</string>
     <string name="select_category">Please select a category</string>
     <string name="transaction_name_optional">Transaction Name (Optional)</string>

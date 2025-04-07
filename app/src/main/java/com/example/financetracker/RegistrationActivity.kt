@@ -5,10 +5,15 @@ import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
+import androidx.lifecycle.lifecycleScope
+import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.databinding.ActivityRegistrationBinding
+import com.example.financetracker.utils.CategoryUtils
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 class RegistrationActivity : BaseActivityWithBack() {
     override fun getLayoutResourceId(): Int = R.layout.activity_registration
@@ -26,6 +31,7 @@ class RegistrationActivity : BaseActivityWithBack() {
         setupToolbar()
         initializeFirebase()
         setupClickListeners()
+        debugCategories()
     }
 
     private fun setupToolbar() {
@@ -41,6 +47,30 @@ class RegistrationActivity : BaseActivityWithBack() {
     private fun setupClickListeners() {
         binding.registerButton.setOnClickListener { handleRegistration() }
         binding.loginLink.setOnClickListener { finish() }
+    }
+
+    private fun debugCategories() {
+        val userId = auth.currentUser?.uid ?: "guest_user"
+        lifecycleScope.launch {
+            try {
+                val database = TransactionDatabase.getDatabase(applicationContext)
+                val categories = database.categoryDao().getAllCategories(userId).first()
+
+                Log.d("RegistrationActivity", "=== DEBUG CATEGORIES ===")
+                Log.d("RegistrationActivity", "Found ${categories.size} categories for user $userId")
+                categories.forEach { category ->
+                    Log.d("MainActivity", "Category: ${category.name}, isDefault: ${category.isDefault}")
+                }
+                Log.d("MainActivity", "======================")
+
+                if (categories.isEmpty()) {
+                    Toast.makeText(this@RegistrationActivity, "No categories found, adding defaults", Toast.LENGTH_SHORT).show()
+                    CategoryUtils.initializeCategories(this@RegistrationActivity)
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error debugging categories", e)
+            }
+        }
     }
 
     private fun handleRegistration() {

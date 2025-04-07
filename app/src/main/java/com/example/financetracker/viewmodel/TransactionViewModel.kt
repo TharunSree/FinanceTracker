@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 
 data class CategoryStatistics(
@@ -178,6 +179,24 @@ class TransactionViewModel(
                 _errorMessage.postValue("Failed to update category color.")
             }
         }
+    }
+
+    fun migrateGuestTransactions(guestUserId: String, loggedInUserId: String) = viewModelScope.launch {
+        Log.d(TAG, "Attempting to migrate transactions from guest '$guestUserId' to user '$loggedInUserId'")
+        try {
+            // It's crucial this runs on an IO thread
+            val updatedRows = withContext(Dispatchers.IO) {
+                transactionDao.updateUserIdForGuest(guestUserId, loggedInUserId)
+            }
+            Log.i(TAG, "Migrated $updatedRows guest transactions to user '$loggedInUserId'")
+            // Optional: Trigger a refresh of the transaction list if needed,
+            // although navigating to MainActivity usually handles this.
+            // loadAllTransactions() // Or specific filter based on prior state
+        } catch (e: Exception) {
+            Log.e(TAG, "Error migrating guest transactions", e)
+            _errorMessage.postValue("Error associating guest data: ${e.message}")
+        }
+        // Note: Loading state (_loading) might need management if this takes significant time.
     }
 
     private suspend fun updateCategories() {

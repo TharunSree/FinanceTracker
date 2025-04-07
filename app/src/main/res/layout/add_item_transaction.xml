@@ -1,54 +1,131 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="16dp"
+    tools:context=".AddTransactionActivity">
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/transactionNameInputLayout"
+        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:hint="@string/hint_transaction_name"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:errorEnabled="true">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="textCapSentences"/> </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/transactionAmountInputLayout"
+        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="@string/hint_transaction_amount"
+        app:layout_constraintTop_toBottomOf="@id/transactionNameInputLayout"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:errorEnabled="true">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="numberDecimal" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/transactionDateInputLayout"
+        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="@string/hint_transaction_date"
+        app:layout_constraintTop_toBottomOf="@id/transactionAmountInputLayout"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:errorEnabled="true">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/transactionDateEditText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:focusable="false"
+            android:clickable="true"
+            android:longClickable="false"
+            android:inputType="none" />
+    </com.google.android.material.textfield.TextInputLayout>
 
 
-    <EditText
-        android:id="@+id/transactionNameInput"
-        android:layout_height="48dp"
-        android:layout_width="match_parent"
-        android:hint="Transaction Name" />
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/transactionCategoryInputLayout"
+        style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="@string/hint_category"
+        app:layout_constraintTop_toBottomOf="@id/transactionDateInputLayout"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:errorEnabled="true">
+        <AutoCompleteTextView
+            android:id="@+id/transactionCategoryAutoCompleteTextView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="none"
+            android:saveEnabled="false" />
+    </com.google.android.material.textfield.TextInputLayout> <com.google.android.material.textfield.TextInputLayout
+    android:id="@+id/transactionMerchantInputLayout"
+    style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+    android:layout_width="0dp"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="8dp"
+    android:hint="@string/hint_transaction_merchant_optional"
+    app:layout_constraintTop_toBottomOf="@id/transactionCategoryInputLayout"
+    app:layout_constraintStart_toStartOf="parent"
+    app:layout_constraintEnd_toEndOf="parent"
+    app:errorEnabled="true">
 
-    <EditText
-        android:id="@+id/transactionAmountInput"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:hint="Transaction Amount"
-        android:inputType="numberDecimal" />
-
-    <EditText
-        android:id="@+id/transactionDateInput"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:hint="Transaction Date"
-        android:focusable="false"
-        android:clickable="true"
-        android:inputType="none" />
-
-    <Spinner
-        android:id="@+id/transactionCategorySpinner"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:hint="Transaction Category" />
-
-    <EditText
-        android:id="@+id/transactionMerchantInput"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:hint="Merchant" />
-
-    <EditText
-        android:id="@+id/transactionDescriptionInput"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:hint="Description" />
-
-    <Button
-        android:id="@+id/saveTransactionButton"
+    <com.google.android.material.textfield.TextInputEditText
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Save" />
-</LinearLayout>
+        android:inputType="textCapWords"/> </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/transactionDescriptionInputLayout"
+        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="@string/hint_transaction_description_optional"
+        app:layout_constraintTop_toBottomOf="@id/transactionMerchantInputLayout"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:errorEnabled="true">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="top"
+            android:lines="3"
+            android:inputType="textMultiLine|textCapSentences"/> </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/saveTransactionButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="@string/button_save_transaction"
+        app:layout_constraintTop_toBottomOf="@id/transactionDescriptionInputLayout"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

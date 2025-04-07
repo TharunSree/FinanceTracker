@@ -67,6 +67,38 @@ object CategoryUtils {
         }
     }
 
+
+    /**
+     * Retrieves a distinct list of category names for the given user ID,
+     * including user-specific categories and global defaults stored locally.
+     * Intended for populating dropdowns like AutoCompleteTextView.
+     *
+     * @param context Context to access the database.
+     * @param userId The user ID (can be guest ID). Null might be treated as guest or error depending on logic.
+     * @return A list of distinct category name strings. Returns empty list on error.
+     */
+    suspend fun getCategoryNamesForUser(context: Context, userId: String?): List<String> {
+        if (userId == null) {
+            Log.e(TAG, "Cannot fetch category names for null userId.")
+            return emptyList() // Or handle based on your guest logic maybe?
+        }
+        return try {
+            Log.d(TAG, "Fetching category names for userId: $userId")
+            val database = TransactionDatabase.getDatabase(context.applicationContext) // Use application context
+            val categoryDao = database.categoryDao()
+
+            withContext(Dispatchers.IO) {
+                // Fetch Category objects and map to names, ensuring distinctness
+                categoryDao.getAllCategoriesListForUser(userId)
+                    .map { it.name }
+                    .distinct()
+                    .sorted() // Optional: Sort alphabetically
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching category names from DB for userId: $userId", e)
+            emptyList() // Return empty list on error
+        }
+    }
     /**
      * Initializes categories on app start.
      * Checks local DB, syncs from Firestore if empty, adds defaults if still empty.
