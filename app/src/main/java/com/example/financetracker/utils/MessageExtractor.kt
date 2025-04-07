@@ -155,41 +155,36 @@ class MessageExtractor(private val context: Context) {
 
         // Extract date
         // First try to find explicit date markers
+        var dateStr: String? = null
+        // Try explicit markers first
         val dateMarkerPattern = Regex("""(?:on\sdate|dated|on)\s+(\d{1,2}[A-Za-z]{3}\d{2,4}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4})""", RegexOption.IGNORE_CASE)
-        var dateStr = dateMarkerPattern.find(message)?.groupValues?.get(1)
-        Log.d(TAG, "Regex found Date String (marked): $dateStr")
+        dateStr = dateMarkerPattern.find(message)?.groupValues?.getOrNull(1)
 
-
-        // If no explicit date marker, try to find any date pattern in the message
+        // If no marker, try general patterns
         if (dateStr == null) {
-            // Improved pattern to catch various date formats more reliably
             val generalDatePattern = Regex("""(\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}|\d{1,2}\s?[A-Za-z]{3}\s?\d{2,4})""")
-            dateStr = generalDatePattern.find(message)?.groupValues?.get(1)
-            Log.d(TAG, "Regex found Date String (general): $dateStr")
+            dateStr = generalDatePattern.find(message)?.groupValues?.getOrNull(1)
         }
 
-        // Try to parse the date string
+        var parsedDateMillis: Long? = null
         if (dateStr != null) {
             for (dateFormat in datePatterns) {
                 try {
-                    // Ensure year is handled correctly (e.g., yy vs yyyy) - SimpleDateFormat handles this
-                    // Important: Consider TimeZone for consistency if parsing dates without explicit timezone info
-                    // dateFormat.timeZone = TimeZone.getDefault() // Or specify UTC: TimeZone.getTimeZone("UTC")
-                    date = dateFormat.parse(dateStr)?.time
-                    if (date != null) {
-                        Log.d(TAG, "Parsed Date to Long: $date using format ${dateFormat.toPattern()}")
-                        break // Exit date format loop once parsed
+                    // dateFormat.timeZone = TimeZone.getTimeZone("UTC") // Consider TimeZone
+                    parsedDateMillis = dateFormat.parse(dateStr)?.time
+                    if (parsedDateMillis != null) {
+                        Log.d(TAG, "Regex: Parsed date '$dateStr' to timestamp: $parsedDateMillis")
+                        break // Stop on first successful parse
                     }
-                } catch (e: Exception) {
-                    // Log.v(TAG, "Date parsing failed for format ${dateFormat.toPattern()}: ${e.message}")
-                    continue // Try next format
-                }
+                } catch (e: Exception) { /* Continue */ }
             }
-            if (date == null) Log.w(TAG, "Failed to parse extracted date string: $dateStr")
-        } else {
-            Log.w(TAG, "Could not extract date string using Regex.")
         }
 
+        // *** SET FINAL DATE: Use parsed date or 0L as default ***
+        val finalDate = parsedDateMillis ?: 0L
+        if (finalDate == 0L) {
+            Log.w(TAG, "Regex: Could not parse or find date string. Defaulting date to 0L.")
+        }
 
         // Extract merchant
         for (pattern in merchantPatterns) {

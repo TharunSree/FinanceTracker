@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.Flow
 interface TransactionDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertTransaction(transaction: Transaction):Long
+    suspend fun insertTransaction(transaction: Transaction): Long
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTransactionAndGetId(transaction: Transaction): Long
@@ -53,7 +53,10 @@ interface TransactionDao {
     suspend fun getTransactionById(id: Int): Transaction?
 
     @Query("UPDATE transactions SET userId = :newUserId WHERE userId = :oldUserId")
-    suspend fun updateUserIdForGuest(oldUserId: String, newUserId: String): Int // Returns number of rows updated
+    suspend fun updateUserIdForGuest(
+        oldUserId: String,
+        newUserId: String
+    ): Int // Returns number of rows updated
 
     /**
      * Get all transactions for a specific category.
@@ -71,13 +74,19 @@ interface TransactionDao {
     /**
      * Get transactions for a specific date range and user.
      */
-    @Query("""
+    @Query(
+        """
         SELECT * FROM transactions
         WHERE userId = :userId
         AND date BETWEEN :startTime AND :endTime
         ORDER BY date DESC
-    """)
-    suspend fun getTransactionsByDateRange(startTime: Long, endTime: Long, userId: String): List<Transaction> // Ensure userId is parameter
+    """
+    )
+    suspend fun getTransactionsByDateRange(
+        startTime: Long,
+        endTime: Long,
+        userId: String
+    ): List<Transaction> // Ensure userId is parameter
 
     /**
      * Search for transactions containing the provided search term.
@@ -133,4 +142,28 @@ interface TransactionDao {
 
     @Query("SELECT * FROM transactions ORDER BY date DESC")
     suspend fun getAllTransactionsList(): List<Transaction> // Ensure this exists
+
+    @Query(
+        """
+        SELECT * FROM transactions
+        WHERE userId = :userId
+        AND amount = :amount
+        AND date BETWEEN :startTimeMillis AND :endTimeMillis
+    """
+    )
+    suspend fun findPotentialDuplicates(
+        userId: String,
+        amount: Double,
+        startTimeMillis: Long,
+        endTimeMillis: Long
+    ): List<Transaction>
+
+    @Query("""
+        SELECT * FROM transactions
+        WHERE userId = :userId AND (category IS NULL OR category = '' OR category = 'Uncategorized')
+        ORDER BY date ASC
+        LIMIT 1
+    """)
+    suspend fun getOldestUncategorizedTransaction(userId: String): Transaction? // Added suspend fun returning nullable Transaction
+
 }

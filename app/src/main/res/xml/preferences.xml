@@ -87,6 +87,25 @@
             android:summary="Remove all financial records"
             app:iconSpaceReserved="false" />
 
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:title="SMS Processing"
+        app:iconSpaceReserved="false">
+
+        <Preference
+            android:key="scan_past_transactions"
+            android:title="Scan Past SMS for Transactions"
+            android:summary="Process older messages to find missed transactions"
+            app:iconSpaceReserved="false" />
+
+        <Preference
+            android:key="scan_senders"
+            android:title="Improve Sender Detection"
+            android:summary="Scan SMS to identify potential financial senders"
+            app:iconSpaceReserved="false" />
+
     </PreferenceCategory>
 
     <PreferenceCategory

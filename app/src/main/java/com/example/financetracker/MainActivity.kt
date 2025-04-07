@@ -61,6 +61,8 @@ import com.example.financetracker.viewmodel.TransactionStatistics
 import com.google.android.material.card.MaterialCardView
 import kotlinx.coroutines.flow.first
 import kotlin.math.abs
+import androidx.lifecycle.Observer // Add Observer import
+import java.util.Date
 
 class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetailsListener {
 
@@ -76,6 +78,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
     private lateinit var categoryStatsContainer: LinearLayout
     private lateinit var expandCollapseIcon: ImageView
     private var isExpanded = false
+    private var isDialogShowing = false
 
     private val transactionRepository: TransactionRepository by lazy {
         val database = TransactionDatabase.getDatabase(applicationContext)
@@ -332,6 +335,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         requestNotificationPermission()
         //setupStatisticsButton()
         setupObservers()
+        setupUncategorizedTransactionObserver()
 
         // Handle intent extras for notifications
         handleIntentExtras(intent)
@@ -768,55 +772,91 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         handleIntentExtras(intent)
     }
 
-    fun showTransactionDetailsDialog(transaction: Transaction, messageBody: String) {
+    private fun showTransactionDetailsDialog(transaction: Transaction, messageBody: String?) {
+        // Store details needed by onDetailsEntered
         currentTransaction = transaction
-        currentMessageBody = messageBody
+        currentMessageBody = messageBody ?: "" // Store empty if null
+
+        Log.d(TAG, "Showing details dialog for Merchant: '${transaction.merchant}', Amount: ${transaction.amount}")
 
         val dialog = TransactionDetailsDialog.newInstance(
-            originalMerchant = transaction.name,
+            // Pass original merchant name from the transaction object
+            originalMerchant = transaction.merchant.ifBlank { "Unknown Merchant" },
+            // Pass messageBody if needed by dialog/pattern saving, otherwise it can be removed
+            // messageBody = messageBody ?: ""
         )
+        // Prevent accidental dismissal before handling result? (Optional)
+        // dialog.isCancelable = false
         dialog.show(supportFragmentManager, "TransactionDetailsDialog")
     }
 
+
+
     override fun onDetailsEntered(merchant: String, category: String, saveAsPattern: Boolean) {
+        // --- Keep your existing logic to update the *currentTransaction* ---
         lifecycleScope.launch {
             try {
+                // Ensure currentTransaction is not null before proceeding
+                val transactionToUpdate = currentTransaction ?: run {
+                    Log.e(TAG, "onDetailsEntered: currentTransaction is null, cannot update.")
+                    Toast.makeText(this@MainActivity, "Error: Transaction data missing.", Toast.LENGTH_SHORT).show()
+                    isDialogShowing = false // Reset flag on error
+                    return@launch
+                }
+
                 val userId = auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(applicationContext)
 
-                // Save merchant-category mapping first
-                transactionViewModel.saveMerchant(merchant, category, userId)
+                // Save merchant-category mapping first (using ViewModel is better)
+                transactionViewModel.saveMerchant(merchant, category, userId) // Assuming ViewModel has this
 
-                currentTransaction?.let { transaction ->
-                    // Update transaction details
-                    transaction.apply {
-                        this.name = merchant
-                        this.category = category
-                        this.userId = userId
-                    }
+                var finalDateMillis = transactionToUpdate.date // Start with original date
 
-                    Log.d(TAG, "Updating transaction: $transaction")
-
-                    // Update in Room and Firestore via ViewModel
-                    transactionViewModel.updateTransaction(transaction)
-
-                    // Force refresh the transaction list
-                    transactionViewModel.loadAllTransactions()
-
-                    Toast.makeText(this@MainActivity,
-                        "Transaction updated successfully",
-                        Toast.LENGTH_SHORT).show()
+                if (finalDateMillis == 0L) { // Check if date was defaulted by extractor
+                    finalDateMillis = System.currentTimeMillis() // Use current time ONLY if original was defaulted (0L)
+                    Log.d(TAG, "onDetailsEntered: Original date was 0L (defaulted), updating to current time: ${Date(finalDateMillis)}")
+                } else {
+                    Log.d(TAG, "onDetailsEntered: Keeping original extracted date: ${Date(finalDateMillis)}")
                 }
+
+                // Update transaction details
+                transactionToUpdate.apply {
+                    this.name = merchant // Update name field as well if needed
+                    this.merchant = merchant
+                    this.category = category
+                    this.userId = userId
+                }
+
+                Log.d(TAG, "onDetailsEntered: Updating transaction ID ${transactionToUpdate.id} with Category: $category, Merchant: $merchant")
+
+                // Update in Room and Firestore via ViewModel
+                transactionViewModel.updateTransaction(transactionToUpdate)
+
+                Toast.makeText(this@MainActivity, "Transaction updated successfully", Toast.LENGTH_SHORT).show()
 
                 if (saveAsPattern) {
                     currentMessageBody?.let { messageBody ->
-                        saveTransactionPattern(messageBody, merchant, category)
+                        // Only save pattern if message body was available (likely from notification)
+                        if (messageBody.isNotEmpty()) {
+                            saveTransactionPattern(messageBody, merchant, category)
+                        } else {
+                            Log.w(TAG, "Cannot save pattern, original SMS body not available.")
+                        }
                     }
                 }
+
+                // --- Logic to check for the *next* uncategorized item ---
+                Log.d(TAG, "onDetailsEntered: Re-checking for more uncategorized transactions.")
+                isDialogShowing = false // Reset flag *before* checking again
+                transactionViewModel.checkForUncategorizedTransactions() // Trigger the check again
+
             } catch (e: Exception) {
-                Log.e(TAG, "Error updating transaction", e)
-                Toast.makeText(this@MainActivity,
-                    "Error updating transaction: ${e.message}",
-                    Toast.LENGTH_SHORT).show()
+                Log.e(TAG, "Error updating transaction in onDetailsEntered", e)
+                Toast.makeText(this@MainActivity, "Error updating transaction: ${e.message}", Toast.LENGTH_SHORT).show()
+                isDialogShowing = false // Reset flag on error
+            } finally {
+                // Clear current transaction references after processing
+                currentTransaction = null
+                currentMessageBody = null
             }
         }
     }
@@ -973,6 +1013,7 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         Toast.makeText(this, "Pattern saved for future transactions", Toast.LENGTH_SHORT).show()
     }
 
+
     override fun onDestroy() {
         super.onDestroy()
         try {
@@ -1012,48 +1053,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
             // *** ADD THIS LINE ***
             updateGuestModeBanner() // Also update banner visibility when user is confirmed logged out/guest
         }
-    }
-
-    // For debugging Firestore connectivity
-    private fun debugFirestore() {
-        val userId = auth.currentUser?.uid
-        if (userId == null) {
-            Log.d(TAG, "No user logged in for debugging")
-            Toast.makeText(this, "Please log in first", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        // Check if user document exists
-        firestore.collection("users").document(userId)
-            .get()
-            .addOnSuccessListener { document ->
-                if (document != null && document.exists()) {
-                    Log.d(TAG, "Found user document: ${document.data}")
-                    Toast.makeText(this, "User document exists", Toast.LENGTH_SHORT).show()
-                } else {
-                    Log.d(TAG, "No user document found")
-                    Toast.makeText(this, "No user document found - creating one", Toast.LENGTH_SHORT).show()
-
-                    // Create user document if missing
-                    val userProfile = hashMapOf(
-                        "uid" to userId,
-                        "email" to (auth.currentUser?.email ?: ""),
-                        "createdAt" to System.currentTimeMillis(),
-                        "lastLogin" to "2025-03-07 10:29:59",
-                        "username" to "TharunSree"  // Example using the provided information
-                    )
-
-                    firestore.collection("users").document(userId)
-                        .set(userProfile)
-                        .addOnSuccessListener {
-                            Toast.makeText(this, "User document created", Toast.LENGTH_SHORT).show()
-                        }
-                }
-            }
-            .addOnFailureListener { e ->
-                Log.e(TAG, "Error checking user document", e)
-                Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
     }
 
     /**
@@ -1125,6 +1124,25 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                 Toast.makeText(this@MainActivity, "Sync failed: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    private fun setupUncategorizedTransactionObserver() {
+        transactionViewModel.oldestUncategorizedTransaction.observe(this, Observer { transaction ->
+            if (transaction != null && !isDialogShowing) {
+                Log.d(TAG, "Observer received uncategorized transaction ID: ${transaction.id}. Showing dialog.")
+                isDialogShowing = true // Set flag
+                // Call your existing dialog showing function.
+                // It now gets triggered by this observer OR the notification intent.
+                // We might not have the original message body here, pass null or empty string.
+                showTransactionDetailsDialog(transaction, "") // Pass empty string for messageBody
+            } else if (transaction == null) {
+                Log.d(TAG, "Observer received null (no uncategorized transactions or check completed).")
+                // Reset flag if necessary, though onDetailsEntered handles the primary loop reset
+                // isDialogShowing = false; // Might cause issues if called too early
+            } else {
+                Log.d(TAG, "Observer received transaction but dialog is already showing/managed.")
+            }
+        })
     }
 
     enum class FilterPeriod {
