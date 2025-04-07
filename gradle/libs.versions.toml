@@ -25,6 +25,7 @@ coroutines = "1.10.1"
 # Change Dhaval Color Picker version
 dhavalColorpickerVersion = "2.3"
 accompanist = "0.34.0"
+playServicesCastTv = "21.1.1"
 
 
 [libraries]
@@ -88,7 +89,8 @@ entity-extraction = 'com.google.mlkit:entity-extraction:16.0.0-beta5'
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 google-gemini = "com.google.ai.client.generativeai:generativeai:0.9.0"
 kotlinx-serialization = "org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3"
-androidx-preference = "androidx.preference:preference-ktx:1.2.1" # Changed to ktx version
+androidx-preference = "androidx.preference:preference-ktx:1.2.1"
+play-services-cast-tv = { group = "com.google.android.gms", name = "play-services-cast-tv", version.ref = "playServicesCastTv" } # Changed to ktx version
 
 [plugins]
 # Keep existing plugins...

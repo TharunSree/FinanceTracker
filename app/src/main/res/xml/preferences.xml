@@ -8,15 +8,15 @@
 
         <Preference
             android:key="account_info"
-            android:title="Account Information"
             android:summary="View and edit your profile information"
+            android:title="Account Information"
             app:iconSpaceReserved="false" />
 
         <SwitchPreferenceCompat
-            android:key="sync_data"
-            android:title="Sync data with cloud"
-            android:summary="Automatically back up your financial data"
             android:defaultValue="true"
+            android:key="sync_data"
+            android:summary="Automatically back up your financial data"
+            android:title="Sync data with cloud"
             app:iconSpaceReserved="false" />
 
     </PreferenceCategory>
@@ -26,17 +26,17 @@
         app:iconSpaceReserved="false">
 
         <SwitchPreferenceCompat
-            android:key="notifications_enabled"
-            android:title="Enable notifications"
-            android:summary="Receive transaction alerts and reminders"
             android:defaultValue="true"
+            android:key="notifications_enabled"
+            android:summary="Receive transaction alerts and reminders"
+            android:title="Enable notifications"
             app:iconSpaceReserved="false" />
 
         <SwitchPreferenceCompat
-            android:key="sms_notification"
-            android:title="SMS transaction detection"
-            android:summary="Automatically detect transactions from SMS"
             android:defaultValue="true"
+            android:key="sms_notification"
+            android:summary="Automatically detect transactions from SMS"
+            android:title="SMS transaction detection"
             app:iconSpaceReserved="false" />
 
     </PreferenceCategory>
@@ -46,21 +46,21 @@
         app:iconSpaceReserved="false">
 
         <ListPreference
-            android:key="currency"
-            android:title="Default currency"
-            android:summary="Select your preferred currency"
+            android:defaultValue="INR"
             android:entries="@array/currency_entries"
             android:entryValues="@array/currency_values"
-            android:defaultValue="INR"
+            android:key="currency"
+            android:summary="Select your preferred currency"
+            android:title="Default currency"
             app:iconSpaceReserved="false" />
 
         <ListPreference
-            android:key="theme_mode"
-            android:title="App theme"
-            android:summary="Choose light or dark theme"
+            android:defaultValue="system"
             android:entries="@array/theme_entries"
             android:entryValues="@array/theme_values"
-            android:defaultValue="system"
+            android:key="theme_mode"
+            android:summary="Choose light or dark theme"
+            android:title="App theme"
             app:iconSpaceReserved="false" />
 
     </PreferenceCategory>
@@ -71,20 +71,20 @@
 
         <Preference
             android:key="export_data"
-            android:title="Export data"
             android:summary="Export your financial records"
+            android:title="Export data"
             app:iconSpaceReserved="false" />
 
         <Preference
             android:key="import_data"
-            android:title="Import data"
             android:summary="Import your financial records"
+            android:title="Import data"
             app:iconSpaceReserved="false" />
 
         <Preference
             android:key="clear_data"
-            android:title="Clear all data"
             android:summary="Remove all financial records"
+            android:title="Clear all data"
             app:iconSpaceReserved="false" />
 
 
@@ -96,14 +96,20 @@
 
         <Preference
             android:key="scan_past_transactions"
-            android:title="Scan Past SMS for Transactions"
             android:summary="Process older messages to find missed transactions"
+            android:title="Scan Past SMS for Transactions"
+            app:iconSpaceReserved="false" />
+
+        <Preference
+            android:key="manage_senders"
+            android:summary="View and enable/disable recognized senders"
+            android:title="Manage Financial Senders"
             app:iconSpaceReserved="false" />
 
         <Preference
             android:key="scan_senders"
-            android:title="Improve Sender Detection"
             android:summary="Scan SMS to identify potential financial senders"
+            android:title="Improve Sender Detection"
             app:iconSpaceReserved="false" />
 
     </PreferenceCategory>
@@ -114,15 +120,15 @@
 
         <Preference
             android:key="app_version"
-            android:title="App Version"
-            android:summary="1.0.0"
             android:selectable="false"
+            android:summary="1.0.0"
+            android:title="App Version"
             app:iconSpaceReserved="false" />
 
         <Preference
             android:key="about"
-            android:title="About Finance Tracker"
             android:summary="Learn more about the app"
+            android:title="About Finance Tracker"
             app:iconSpaceReserved="false" />
 
     </PreferenceCategory>

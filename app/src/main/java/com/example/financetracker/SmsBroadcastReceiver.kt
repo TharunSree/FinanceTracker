@@ -46,8 +46,9 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
             val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
 
             // *** Load the combined sender list HERE ***
-            val currentFinancialSenders = SenderListManager.getCombinedSenders(context)
-            Log.v(TAG, "Using ${currentFinancialSenders.size} senders for filtering.") // Verbose log
+            val currentActiveSenders = SenderListManager.getActiveSenders(context)
+            Log.v(TAG, "Using ${currentActiveSenders.size} active senders for filtering.")
+
 
 
             messages?.forEach { smsMessage ->
@@ -63,7 +64,7 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
                 Log.d(TAG, "SMS received. From: $sender")
 
                 // *** Pass the loaded sender list to the check ***
-                if (isFinancialMessage(sender, messageBody, currentFinancialSenders)) {
+                if (isFinancialMessage(sender, messageBody, currentActiveSenders)) {
                     Log.i(TAG, "Financial message detected from sender: $sender. Starting service.")
                     val serviceIntent = Intent(context, SmsProcessingService::class.java).apply {
                         putExtra(EXTRA_SENDER, sender)
@@ -85,8 +86,8 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
     }
 
     // *** Modify isFinancialMessage to accept the sender list ***
-    private fun isFinancialMessage(sender: String, message: String, allowedSenders: Set<String>): Boolean {
-        if (!senderMatches(sender, allowedSenders)) { // Pass the list
+    private fun isFinancialMessage(sender: String, message: String, activeSenders: Set<String>): Boolean {
+        if (!senderMatches(sender, activeSenders)) { // Pass the list
             return false
         }
         if (!hasAmount(message)) {
@@ -99,11 +100,11 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
     }
 
     // Modify senderMatches to use the provided Set
-    private fun senderMatches(sender: String, allowedSenders: Set<String>): Boolean {
+    private fun senderMatches(sender: String, activeSenders: Set<String>): Boolean {
         val normalizedSender = sender.uppercase().trim() // Normalize for comparison
         // Check if the normalized sender *contains* any of the allowed sender IDs
         // This handles prefixes like VK-, AM- etc.
-        return allowedSenders.any { knownSender ->
+        return activeSenders.any { knownSender ->
             normalizedSender.contains(knownSender)
         }
     }

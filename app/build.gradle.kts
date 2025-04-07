@@ -92,7 +92,8 @@ dependencies {
 
     // --- Room ---
     implementation(libs.androidx.room.runtime) // Uses alias
-    implementation(libs.androidx.room.ktx) // Uses alias
+    implementation(libs.androidx.room.ktx)
+    implementation(libs.play.services.cast.tv) // Uses alias
     ksp(libs.androidx.room.compiler) // Uses alias
 
     // --- Coroutines ---

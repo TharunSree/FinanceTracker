@@ -474,7 +474,7 @@ class TransactionViewModel(
                     )
 
                     // 3. Load senders list
-                    val allowedSenders = SenderListManager.getCombinedSenders(appContext)
+                    val allowedSenders = SenderListManager.getActiveSenders(appContext)
                     val extractor = MessageExtractor(appContext) // Use app context
 
                     // 4. Iterate and Process
@@ -517,19 +517,19 @@ class TransactionViewModel(
                                     if (isFinancialMessageScan(sender, body, allowedSenders)) {
                                         financialMsgCount++
                                         Log.v(TAG, "[SMS Scan] Potential financial msg from $sender: $body")
-                                        val details = extractor.extractTransactionDetails(body, smsDate) // Pass SMS date
+                                        val details = extractor.extractTransactionDetails(body) // Pass SMS date
                                         // Extract details
 
 
                                         if (details != null) {
                                             // Check for duplicates (using the stricter scan check)
-                                            val isDuplicate = checkForDuplicateScan(details, userId, smsDate)
+                                            val isDuplicate = checkForDuplicateScan(details, userId)
                                             if (!isDuplicate) {
                                                 val transaction = Transaction(
                                                     id = 0, // Let Room generate
                                                     name = details.merchant.ifBlank { "Unknown Merchant" },
                                                     amount = details.amount,
-                                                    date = details.date, // Use extracted date, fallback to SMS date if extractor defaulted
+                                                    date = smsDate, // Use extracted date, fallback to SMS date if extractor defaulted
                                                     category = details.category.ifBlank { "Uncategorized" },
                                                     merchant = details.merchant,
                                                     description = details.description.ifBlank { "Scanned from SMS" },
@@ -577,7 +577,7 @@ class TransactionViewModel(
         } // end viewModelScope.launch
     }
 
-    private suspend fun checkForDuplicateScan(details: TransactionDetails, userId: String, smsTimestamp: Long): Boolean {
+    private suspend fun checkForDuplicateScan(details: TransactionDetails, userId: String): Boolean {
         // Use a tighter window for scanning, e.g., +/- 5-10 seconds around *extracted* date
         val timeWindowMillis = 10000L
         val startTime = details.date - timeWindowMillis
@@ -1280,21 +1280,17 @@ class TransactionViewModel(
                     "userId" to userId
                 )
 
-                if (docRef != null) {
-                    docRef.set(transactionMap)
-                        .addOnSuccessListener {
-                            Log.d(
-                                "TransactionViewModel",
-                                "Transaction synced to Firestore: ${transaction.id}, docId: ${transaction.documentId}"
-                            )
-                            viewModelScope.launch {
-                                loadAllTransactions()
-                            }
-                        }
-                        .addOnFailureListener { e ->
-                            Log.e("TransactionViewModel", "Failed to sync transaction to Firestore", e)
-                            _errorMessage.postValue("Failed to sync transaction to Firestore: ${e.message}")
-                        }
+                docRef?.set(transactionMap)?.addOnSuccessListener {
+                    Log.d(
+                        "TransactionViewModel",
+                        "Transaction synced to Firestore: ${transaction.id}, docId: ${transaction.documentId}"
+                    )
+                    viewModelScope.launch {
+                        loadAllTransactions()
+                    }
+                }?.addOnFailureListener { e ->
+                    Log.e("TransactionViewModel", "Failed to sync transaction to Firestore", e)
+                    _errorMessage.postValue("Failed to sync transaction to Firestore: ${e.message}")
                 }
             } catch (e: Exception) {
                 Log.e("TransactionViewModel", "Error syncing transaction to Firestore", e)

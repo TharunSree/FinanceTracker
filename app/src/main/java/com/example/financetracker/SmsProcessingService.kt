@@ -120,7 +120,7 @@ class SmsProcessingService : Service() {
                 val messageExtractor = MessageExtractor(this@SmsProcessingService)
 
                 // *** PASS smsTimestamp to the extractor ***
-                val details = messageExtractor.extractTransactionDetails(messageBody, smsTimestamp) // Pass timestamp
+                val details = messageExtractor.extractTransactionDetails(messageBody) // Pass timestamp
 
 
                 if (details != null) {
@@ -133,7 +133,7 @@ class SmsProcessingService : Service() {
 
                     // --- Duplicate Check (Use extracted date primarily) ---
                     // The check uses details.date, which will now be the SMS timestamp if extraction defaulted.
-                    val checkDate = if (details.date != 0L) details.date else smsTimestamp // Use extracted date or SMS timestamp for check window
+                    val checkDate = smsTimestamp // Use extracted date or SMS timestamp for check window
                     val timeWindowMillis = 30000L
                     val startTime = checkDate - timeWindowMillis
                     val endTime = checkDate + timeWindowMillis
@@ -158,7 +158,7 @@ class SmsProcessingService : Service() {
                         id = 0,
                         name = details.merchant.ifBlank { "Unknown Merchant" },
                         amount = details.amount,
-                        date = details.date, // Use the date from details (could be extracted or the SMS timestamp)
+                        date = smsTimestamp, // Use the date from details (could be extracted or the SMS timestamp)
                         category = knownCategory ?: "",
                         merchant = details.merchant,
                         description = details.description,

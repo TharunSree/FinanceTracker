@@ -17,6 +17,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone // Import TimeZone
+import kotlin.math.abs
 
 // Class responsible for extracting transaction details from SMS messages using the Gemini API.
 class GeminiMessageExtractor(
@@ -69,142 +70,93 @@ class GeminiMessageExtractor(
     // Suspended function to extract transaction details and type from an SMS message body.
     // Returns a Pair containing the TransactionDetails (nullable) and the Type string (nullable).
     suspend fun extractTransactionDetails(messageBody: String): Pair<TransactionDetails?, String?> {
-        // Check if model initialization failed
-        if (generativeModel == null) {
-            Log.e(TAG, "GenerativeModel is not initialized. Cannot extract details.")
-            return Pair(null, null)
-        }
+        if (generativeModel == null) { Log.e(TAG, "Gemini model not initialized."); return Pair(null, null) }
 
         return withContext(Dispatchers.IO) {
             try {
-                Log.d(TAG, "Starting Gemini extraction for message: $messageBody")
-
-                // Fetch categories for the prompt.
                 val defaultCategories = CategoryUtils.getDefaultCategories().map { it.name }
                 val userCategories = categoryDao.getAllCategoriesList().map { it.name }
-                // Ensure "Uncategorized" is always an option.
                 val allCategories = (defaultCategories + userCategories + listOf("Uncategorized")).distinct()
                 val categoriesString = allCategories.joinToString(", ")
-                Log.d(TAG, "Using categories for Gemini prompt: $categoriesString")
+                Log.d(TAG, "[Gemini Prompt] Using categories: $categoriesString")
 
-                // Construct the prompt for the Gemini API based on the user's TransactionDetails class.
+                // *** === MODIFIED PROMPT === ***
                 val prompt = """
-                Analyze the following SMS message and extract transaction details.
+                Analyze the following SMS message.
                 SMS Message: "$messageBody"
 
                 Available Categories: [$categoriesString]
 
-                Extract the following information and format it strictly as a single JSON object with these exact keys: "amount", "date", "merchant", "category", "currency", "referenceNumber", "description", "type".
-                - "amount": Transaction amount as a number (e.g., 150.75). Must be positive.
-                - "date": Transaction date in YYYY-MM-DD format. Use today's date if missing. Assume current year if year is missing.
-                - "merchant": Merchant name or sender (e.g., "Amazon", "Salary", "Transfer"). Use "Unknown Merchant" if unclear.
-                - "category": Choose the most appropriate category ONLY from the provided list: [$categoriesString]. Use "Uncategorized" if unsure or no category fits.
-                - "currency": Currency code (e.g., "USD", "INR", "EUR"). Infer if possible, otherwise use "XXX".
-                - "referenceNumber": Any reference number or transaction ID (string or null if none).
-                - "description": Concise transaction description (max 15 words). Use the merchant name if no other description is available.
-                - "type": Determine if it's "Income" or "Expense". Use "Expense" if unsure.
+                **Instruction:** First, determine if this message describes an actual financial transaction (a debit, credit, payment, transfer, or withdrawal). IGNORE messages that are only OTPs, login alerts, security warnings, balance inquiries, promotional offers, or general notifications, even if they mention an account number or financial institution.
 
-                Example Output Format (MUST be only this JSON object):
-                {
-                  "amount": 125.50,
-                  "date": "2024-07-28",
-                  "merchant": "Starbucks",
-                  "category": "Food & Dining",
-                  "currency": "USD",
-                  "referenceNumber": "REF12345",
-                  "description": "Coffee purchase at Starbucks",
-                  "type": "Expense"
-                }
+                **Output Format:**
+                1.  **If it IS a financial transaction:** Extract the following information and format it strictly as a single JSON object with these exact keys: "amount", "merchant", "category", "currency", "referenceNumber", "description", "type".
+                    - "name": Give a suitable name for the transaction (e.g., "Amazon Purchase", "Salary Deposit") after analyzing "category", "merchant" and "description". A name must be present imagine some name.
+                    - "amount": Transaction amount as a positive number (e.g., 150.75, 2000000.00). Handle commas correctly. Output ONLY the number. Must be present if it's a transaction.
+                    - "merchant": Merchant name, recipient, or source (e.g., "Amazon", "Salary", "Transfer to John"). Use "Unknown Merchant" if truly unclear.
+                    - "category": Choose the **single most appropriate category** ONLY from this exact list: [$categoriesString]. Do NOT create new categories. If no category from the list fits well or context is minimal, use "Uncategorized".
+                    - "currency": Currency code (e.g., "INR", "USD"). Infer if possible, default "XXX".
+                    - "referenceNumber": Transaction reference number or ID if present (string or null).
+                    - "description": Concise transaction purpose (max 15 words). Default to merchant name if blank.
+                    - "type": Determine if it's "Income" or "Expense". Default to "Expense".
+                2.  **If it is NOT a financial transaction (e.g., OTP, alert, promo):** Output ONLY the empty JSON object: `{}`
+
+                Example Transaction Output: {"name":Ordering Burger, "amount": 500.00, "merchant": "Swiggy", "category": "Food & Dining", "currency": "INR", "referenceNumber": null, "description": "Food order", "type": "Expense"}
+                Example Non-Transaction Output: {}
+
+                Your output must be ONLY the JSON object based on the conditions above.
                 """.trimIndent()
+                // *** === END MODIFIED PROMPT === ***
 
-                // Log the prompt for debugging (optional)
-                // Log.v(TAG, "Generated Prompt: $prompt")
-
-                // Generate content using the model.
-                val response = generativeModel.generateContent(prompt) // Use the initialized model
-
-                // Log the raw response text for debugging.
+                Log.v(TAG, "Sending prompt to Gemini...") // Verbose log for prompt
+                val response = generativeModel.generateContent(prompt)
                 val rawResponseText = response.text
-                Log.d(TAG, "Raw Gemini Response: $rawResponseText")
+                Log.d(TAG, "[Gemini Raw Response]: $rawResponseText")
 
-                // Attempt to parse the JSON response.
                 rawResponseText?.let { jsonString ->
-                    // Clean the response: Remove potential markdown backticks and trim whitespace.
                     val cleanedJsonString = jsonString.trim().removeSurrounding("```json", "```").trim()
-                    Log.d(TAG, "Cleaned JSON String: $cleanedJsonString")
+                    Log.d(TAG, "[Gemini Cleaned JSON]: $cleanedJsonString")
+
+                    // *** ADD CHECK FOR EMPTY JSON OBJECT ***
+                    if (cleanedJsonString == "{}") {
+                        Log.i(TAG, "[Gemini] Identified message as non-transactional (returned {}).")
+                        return@withContext Pair(null, null) // Return nulls for non-transactions
+                    }
+                    // *** END CHECK ***
+
                     try {
                         val jsonObject = JSONObject(cleanedJsonString)
-
-                        // Extract data, providing defaults or handling potential errors.
-                        val amount = jsonObject.optDouble("amount", 0.0)
-                        // Ensure amount is positive, type determines income/expense
-                        val finalAmount = kotlin.math.abs(amount)
-
-                        val dateString = jsonObject.optString("date", "")
-                        val merchant = jsonObject.optString("merchant", "Unknown Merchant").ifBlank { "Unknown Merchant" }
+                        // ... (Extract amount, merchant, category etc. as before - LOG amount) ...
+                        val name = jsonObject.optString("name","Unknown").ifBlank { "Unknown" }
+                        val rawAmount = jsonObject.opt("amount"); Log.d(TAG, "[Gemini] Raw amount: $rawAmount"); val amount = jsonObject.optDouble("amount", 0.0); val finalAmount = abs(amount); Log.d(TAG, "[Gemini] Parsed amount: $amount, Final: $finalAmount")
+                        val merchant = jsonObject.optString("merchant", "Unknown").ifBlank { "Unknown" }
                         val category = jsonObject.optString("category", "Uncategorized").ifBlank { "Uncategorized" }
                         val currency = jsonObject.optString("currency", "XXX").ifBlank { "XXX" }
-                        // Handle optional reference number (null if not present or empty/blank)
                         val referenceNumber = jsonObject.optString("referenceNumber", null).takeIf { !it.isNullOrBlank() }
-                        val description = jsonObject.optString("description", "").ifBlank { merchant } // Default description to merchant if blank
-                        val type = jsonObject.optString("type", "Expense").ifBlank { "Expense" } // Extract type separately, default Expense
+                        val description = jsonObject.optString("description", "").ifBlank { merchant }
+                        val type = jsonObject.optString("type", "Expense").ifBlank { "Expense" }
 
-                        // Parse the date string and convert to Long timestamp (milliseconds since epoch).
-                        // Use UTC for parsing to avoid timezone issues before conversion.
-                        var dateLong: Long
-                        var wasDateExtracted = false
-                        if (dateString.isNotEmpty()) {
-                            try {
-                                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH)
-                                sdf.timeZone = TimeZone.getTimeZone("UTC")
-                                val parsedDate = sdf.parse(dateString)
-                                if (parsedDate != null) {
-                                    dateLong = parsedDate.time
-                                    wasDateExtracted = true
-                                } else {
-                                    // *** Use 0L as indicator that Gemini failed to parse/provide date ***
-                                    dateLong = 0L
-                                }
-                            } catch (e: Exception) {
-                                dateLong = 0L // Use 0L on error
-                            }
-                        } else {
-                            dateLong = 0L // Use 0L if date string empty
-                        }
-                        if (!wasDateExtracted) {
-                            Log.w(TAG, "Gemini: Date string empty or parsing failed. Date defaulted to 0L (will use SMS timestamp).")
+                        // Date is placeholder 0L, handled by caller using SMS timestamp
+                        val dateLong = 0L
+
+                        // Check if amount extraction was successful for transactions
+                        if (finalAmount <= 0 && type == "Expense") { // Basic check: Expense needs amount > 0
+                            Log.w(TAG, "[Gemini] Extracted type is Expense, but amount is <= 0 ($finalAmount). Treating as non-transactional.")
+                            return@withContext Pair(null, null)
                         }
 
-                        // Create the TransactionDetails object based on the user's definition.
+
                         val transactionDetails = TransactionDetails(
-                            amount = finalAmount,
-                            merchant = merchant,
-                            date = dateLong, // Use the Long timestamp
-                            category = category,
-                            currency = currency,
-                            referenceNumber = referenceNumber,
-                            description = description
+                            name = name,amount = finalAmount, merchant = merchant, date = dateLong,
+                            category = category, currency = currency,
+                            referenceNumber = referenceNumber, description = description
                         )
-
-                        Log.i(TAG, "Gemini successfully parsed: Details=$transactionDetails, Type=$type")
-
-                        // Return the TransactionDetails object and the extracted type string as a Pair.
+                        Log.i(TAG, "[Gemini] Extracted Transaction: $transactionDetails, Type: $type")
                         Pair(transactionDetails, type)
 
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error parsing Gemini JSON response: $cleanedJsonString", e)
-                        Pair(null, null) // Return nulls if JSON parsing fails
-                    }
-                } ?: run {
-                    Log.w(TAG, "Gemini response text was null.")
-                    Pair(null, null) // Return nulls if the response text is null
-                }
-
-            } catch (e: Exception) {
-                // Log any exceptions during the API call or processing.
-                Log.e(TAG, "Error during Gemini API call or processing", e)
-                Pair(null, null) // Return nulls in case of any other error
-            }
+                    } catch (e: Exception) { Log.e(TAG, "Error parsing Gemini JSON: $cleanedJsonString", e); Pair(null, null) }
+                } ?: run { Log.w(TAG, "Gemini response text was null."); Pair(null, null) }
+            } catch (e: Exception) { Log.e(TAG, "Error calling Gemini API", e); Pair(null, null) }
         }
     }
 }

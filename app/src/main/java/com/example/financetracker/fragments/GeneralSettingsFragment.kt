@@ -28,6 +28,7 @@ import androidx.fragment.app.viewModels
 import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.viewmodel.TransactionViewModel
 
+
 class GeneralSettingsFragment : PreferenceFragmentCompat(),
     SharedPreferences.OnSharedPreferenceChangeListener {
 
@@ -67,6 +68,18 @@ class GeneralSettingsFragment : PreferenceFragmentCompat(),
             Toast.makeText(requireContext(), "Account info feature coming soon", Toast.LENGTH_SHORT)
                 .show()
             true
+        }
+
+        findPreference<Preference>("manage_senders")?.setOnPreferenceClickListener {
+            Log.d(TAG, "Manage Senders preference clicked")
+
+            // *** Show ManageSendersFragment as a Dialog ***
+            val dialogFragment = ManageSendersFragment()
+            // Use parentFragmentManager when showing a dialog from within another Fragment
+            dialogFragment.show(parentFragmentManager, "ManageSendersDialogTag") // Use a unique tag
+            // --- End Show Dialog ---
+
+            true // Indicate the click was handled
         }
 
         findPreference<Preference>("scan_past_transactions")?.setOnPreferenceClickListener {

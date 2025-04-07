@@ -10,6 +10,7 @@ object SenderListManager {
 
     private const val PREFS_NAME = "FinancialSendersPrefs"
     private const val KEY_APPROVED_SENDERS = "approved_senders"
+    private const val KEY_DISABLED_DEFAULT_SENDERS = "disabled_default_senders"
     private const val TAG = "SenderListManager"
 
     // Base default senders (can be expanded)
@@ -35,7 +36,7 @@ object SenderListManager {
     /**
      * Gets the combined set of default and user-approved senders.
      */
-    fun getCombinedSenders(context: Context): Set<String> {
+    private fun getCombinedSenders(context: Context): Set<String> {
         val approvedSenders = getApprovedSenders(context)
         // Combine defaults and approved, ensuring case-insensitivity for comparison later
         return (defaultSenders + approvedSenders).map { it.uppercase() }.toSet()
@@ -61,6 +62,13 @@ object SenderListManager {
         val updatedSenders = currentApproved + newSenders // Add new ones to existing
         prefs.edit().putStringSet(KEY_APPROVED_SENDERS, updatedSenders).apply()
         Log.d(TAG, "Saved ${newSenders.size} new senders. Total approved: ${updatedSenders.size}")
+    }
+
+    fun getActiveSenders(context: Context): Set<String> {
+        val userAdded = getUserAddedSenders(context)
+        val disabledDefaults = getDisabledDefaultSenders(context)
+        val enabledDefaults = defaultSenders - disabledDefaults
+        return enabledDefaults + userAdded
     }
 
     /**
@@ -134,16 +142,94 @@ object SenderListManager {
                 Log.e(TAG, "Error querying SMS for senders.", e)
             }
         }
+
+
         // !!! --- End Placeholder --- !!!
 
         Log.d(TAG, "Scan complete. Found ${potentialNewSenders.size} potential new senders.")
         return potentialNewSenders.distinct() // Return unique list
     }
 
+    fun updateSenderStatus(context: Context, sender: String, isEnabled: Boolean) {
+        val upperSender = sender.uppercase()
+        val prefs = getPreferences(context)
+        val editor = prefs.edit()
+
+        val userAdded = getUserAddedSenders(context).toMutableSet()
+        val disabledDefaults = getDisabledDefaultSenders(context).toMutableSet()
+
+        if (defaultSenders.contains(upperSender)) {
+            // It's a default sender
+            if (isEnabled) {
+                // User is enabling a default sender (removing from disabled list)
+                if (disabledDefaults.remove(upperSender)) {
+                    Log.d(TAG, "Re-enabling default sender: $upperSender")
+                }
+            } else {
+                // User is disabling a default sender (adding to disabled list)
+                if (disabledDefaults.add(upperSender)) {
+                    Log.d(TAG, "Disabling default sender: $upperSender")
+                }
+            }
+            editor.putStringSet(KEY_DISABLED_DEFAULT_SENDERS, disabledDefaults)
+        } else {
+            // It's a user-added sender
+            if (isEnabled) {
+                // User is enabling (or re-adding) a custom sender
+                if(userAdded.add(upperSender)){
+                    Log.d(TAG, "Enabling/Adding user sender: $upperSender")
+                }
+            } else {
+                // User is disabling (removing) a custom sender
+                if(userAdded.remove(upperSender)){
+                    Log.d(TAG, "Disabling/Removing user sender: $upperSender")
+                }
+            }
+            editor.putStringSet(KEY_APPROVED_SENDERS, userAdded)
+        }
+        editor.apply() // Apply changes
+    }
+
     // Example Heuristic Functions (can be expanded)
     private fun containsFinancialKeyword(sender: String): Boolean {
         val keywords = listOf("BANK", "PAY", "UPI", "CARD", "CREDIT", "DEBIT", "FIN", "WALLET", "BNK", "BK")
         return keywords.any { sender.contains(it, ignoreCase = true) }
+    }
+
+    data class SenderInfo(
+        val name: String,
+        val isEnabled: Boolean,
+        val isDefault: Boolean // Flag to differentiate default vs user-added
+    )
+
+    private fun getUserAddedSenders(context: Context): Set<String> {
+        val prefs = getPreferences(context)
+        return prefs.getStringSet(KEY_APPROVED_SENDERS, emptySet())?.map { it.uppercase() }?.toSet() ?: emptySet()
+    }
+
+    /**
+     * Gets the set of default senders that the user has explicitly disabled.
+     */
+    private fun getDisabledDefaultSenders(context: Context): Set<String> {
+        val prefs = getPreferences(context)
+        return prefs.getStringSet(KEY_DISABLED_DEFAULT_SENDERS, emptySet())?.map { it.uppercase() }?.toSet() ?: emptySet()
+    }
+
+    fun getManageableSenders(context: Context): List<SenderInfo> {
+        val userAdded = getUserAddedSenders(context)
+        val disabledDefaults = getDisabledDefaultSenders(context)
+
+        val allKnownSenders = (defaultSenders + userAdded).sorted()
+
+        return allKnownSenders.map { sender ->
+            val isDefault = defaultSenders.contains(sender)
+            val isEnabled = if (isDefault) {
+                !disabledDefaults.contains(sender) // Enabled if NOT in the disabled set
+            } else {
+                userAdded.contains(sender) // Enabled if present in the user-added set (should always be true here)
+            }
+            SenderInfo(name = sender, isEnabled = isEnabled, isDefault = isDefault)
+        }
     }
 
     private fun looksLikeBankCode(sender: String): Boolean {

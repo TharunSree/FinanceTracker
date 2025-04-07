@@ -837,14 +837,8 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                 // Save merchant-category mapping first (using ViewModel is better)
                 transactionViewModel.saveMerchant(merchant, category, userId) // Assuming ViewModel has this
 
-                var finalDateMillis = transactionToUpdate.date // Start with original date
+                // Start with original date
 
-                if (finalDateMillis == 0L) { // Check if date was defaulted by extractor
-                    finalDateMillis = System.currentTimeMillis() // Use current time ONLY if original was defaulted (0L)
-                    Log.d(TAG, "onDetailsEntered: Original date was 0L (defaulted), updating to current time: ${Date(finalDateMillis)}")
-                } else {
-                    Log.d(TAG, "onDetailsEntered: Keeping original extracted date: ${Date(finalDateMillis)}")
-                }
 
                 // Update transaction details
                 transactionToUpdate.apply {

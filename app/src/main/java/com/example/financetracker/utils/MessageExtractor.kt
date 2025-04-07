@@ -61,8 +61,8 @@ class MessageExtractor(private val context: Context) {
     // Main function that orchestrates extraction - tries Gemini first
     // Returns TransactionDetails or null if extraction fails.
     // Note: Loses the 'type' ("Income"/"Expense") information if Gemini succeeds.
-    suspend fun extractTransactionDetails(message: String, smsTimestamp: Long): TransactionDetails? {
-        Log.d(TAG, "Starting extraction for message, SMS timestamp: ${Date(smsTimestamp)}")
+    suspend fun extractTransactionDetails(message: String): TransactionDetails? {
+        Log.d(TAG, "Starting extraction (NO SMS date used internally): $message")
         try {
             // Try Gemini AI extraction first
             // Note: Gemini extractor itself doesn't need the timestamp passed if its prompt
@@ -71,19 +71,9 @@ class MessageExtractor(private val context: Context) {
             val (geminiDetails, geminiType) = geminiExtractor.extractTransactionDetails(message) // Gemini call
 
             if (geminiDetails != null) {
-                // *** Check if Gemini defaulted the date (returned 0L) ***
-                if (geminiDetails.date != 0L) {
-                    Log.i(TAG, "Successfully extracted with Gemini (using extracted date): $geminiDetails")
-                    return geminiDetails // Return Gemini result if date was extracted
-                } else {
-                    // Gemini extraction worked but it defaulted the date (0L).
-                    // Return the Gemini details but replace the 0L date with the smsTimestamp.
-                    val detailsWithSmsDate = geminiDetails.copy(date = smsTimestamp)
-                    Log.i(TAG, "Successfully extracted with Gemini, but using SMS timestamp as date was missing/defaulted: $detailsWithSmsDate")
-                    return detailsWithSmsDate
-                }
-            } else {
-                Log.w(TAG, "Gemini extraction returned null details, falling back to regex/MLKit")
+                // We know date will be 0L here, caller will use SMS timestamp
+                Log.i(TAG, "Using Gemini result (date ignored): $geminiDetails")
+                return geminiDetails
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error during Gemini extraction, falling back to regex/MLKit", e)
@@ -92,11 +82,11 @@ class MessageExtractor(private val context: Context) {
         // --- Fallback to Regex/MLKit ---
         Log.d(TAG, "Attempting fallback extraction with Regex/MLKit.")
         // *** Pass smsTimestamp to the internal fallback method ***
-        return extractWithRegexAndMlKitInternal(message, smsTimestamp)
+        return extractWithRegexAndMlKitInternal(message)
     }
 
     // Renamed internal function for fallback using ML Kit and Regex
-    private suspend fun extractWithRegexAndMlKitInternal(message: String, smsTimestamp: Long): TransactionDetails? =
+    private suspend fun extractWithRegexAndMlKitInternal(message: String): TransactionDetails? =
         suspendCoroutine { continuation ->
             // ... (ML Kit model download/annotation logic remains the same) ...
             entityExtractor.downloadModelIfNeeded()
@@ -104,7 +94,7 @@ class MessageExtractor(private val context: Context) {
                     entityExtractor.annotate(message)
                         .addOnSuccessListener { entityAnnotations ->
                             // *** Pass smsTimestamp to processAnnotations ***
-                            val details = processAnnotations(message, entityAnnotations, smsTimestamp)
+                            val details = processAnnotations(message, entityAnnotations)
                             continuation.resume(details)
                         }
                         .addOnFailureListener { /* ... handle failure ... */ continuation.resume(null) }
@@ -117,7 +107,6 @@ class MessageExtractor(private val context: Context) {
     private fun processAnnotations(
         message: String,
         entityAnnotations: List<EntityAnnotation>, // ML Kit annotations (currently unused in this logic, relies on Regex)
-        smsTimestamp: Long
     ): TransactionDetails? {
         Log.d(TAG, "Processing annotations with Regex fallback.")
         // The existing implementation relies primarily on Regex patterns.
@@ -155,26 +144,6 @@ class MessageExtractor(private val context: Context) {
         // --- End Refactored Loop ---
 
         if (amount == null) Log.w(TAG, "Could not extract amount using Regex.")
-
-
-        // Extract date
-        // First try to find explicit date markers
-        val dateStr: String? = null
-        // ... (find dateStr using patterns as before) ...
-        var parsedDateMillis: Long? = null
-        if (dateStr != null) {
-            for (dateFormat in datePatterns) { /* ... try parsing ... */
-                try { parsedDateMillis = dateFormat.parse(dateStr)?.time; if(parsedDateMillis != null) break; } catch(e:Exception){}
-            }
-        }
-
-        // *** SET FINAL DATE: Use parsed date, fallback to smsTimestamp ***
-        val finalDate = parsedDateMillis ?: smsTimestamp // Use parsed date OR smsTimestamp
-        if (parsedDateMillis == null) {
-            Log.w(TAG, "Regex: Could not parse/find date string. Using SMS timestamp as default: ${Date(finalDate)}")
-        } else {
-            Log.d(TAG, "Regex: Parsed date '$dateStr' to timestamp: $finalDate")
-        }
 
         // Extract merchant
         for (pattern in merchantPatterns) {
@@ -222,15 +191,15 @@ class MessageExtractor(private val context: Context) {
         // If we have at least an amount, create the transaction details
         return if (amount != null) {
             val finalMerchant = merchant ?: "Unknown Merchant" // Use "Unknown" if no merchant found
-            val finalDate = date ?: System.currentTimeMillis() // Use current time if date extraction failed
             val finalDescription = description ?: "" // Use empty string if description is null
 
-            Log.i(TAG, "Fallback Regex/MLKit result: Amount=$amount, Merchant='$finalMerchant', Date=$finalDate, Currency='$currency', Ref='$refNumber', Desc='$finalDescription'")
+            Log.i(TAG, "Fallback Regex/MLKit result: Amount=$amount, Merchant='$finalMerchant', Currency='$currency', Ref='$refNumber', Desc='$finalDescription'")
 
             TransactionDetails(
+                name = "Unknown",
                 amount = amount, // Amount is non-null here due to the check
                 merchant = finalMerchant,
-                date = finalDate,
+                date = 0L,
                 category = "Uncategorized", // Fallback category is always Uncategorized
                 currency = currency,
                 referenceNumber = refNumber,
