@@ -7,6 +7,7 @@ import java.util.Date // Keep Date import if needed elsewhere, but class uses Lo
  * This structure is used by the message extractors.
  */
 data class TransactionDetails(
+    val name: String, // Name of the sender or merchant
     val amount: Double,
     val merchant: String, // Name of the merchant or sender
     val date: Long,       // Transaction date as epoch milliseconds (Long)
