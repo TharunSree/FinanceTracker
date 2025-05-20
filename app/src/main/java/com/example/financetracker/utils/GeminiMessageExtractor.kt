@@ -9,6 +9,7 @@ import com.example.financetracker.database.dao.MerchantDao
 import com.example.financetracker.model.TransactionDetails // Assuming this is the correct import path for your data class
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.BlockThreshold
+import com.google.ai.client.generativeai.type.GenerateContentResponse
 import com.google.ai.client.generativeai.type.HarmCategory
 import com.google.ai.client.generativeai.type.SafetySetting
 import kotlinx.coroutines.Dispatchers
@@ -192,4 +193,151 @@ class GeminiMessageExtractor(
             } catch (e: Exception) { Log.e(TAG, "Error calling Gemini API or preparing prompt", e); Pair(null, null) }
         }
     }
-}
+
+    /*suspend fun classifySenderIdAsFinancial(senderId: String): Boolean {
+        if (generativeModel == null) {
+            Log.e(TAG, "Gemini model not initialized for sender classification.")
+            return false // Cannot classify without the model
+        }
+        // Basic check: If senderId is purely numeric or very short, likely not financial ID
+        if (senderId.length < 4 || senderId.all { it.isDigit() || it == '+' }) {
+            Log.v(TAG, "Sender '$senderId' skipped by basic pre-filter (too short/numeric).")
+            return false
+        }
+
+        return withContext(Dispatchers.IO) {
+            try {
+                // Context for the prompt (can be refined)
+                val knownBankIndicators = "SBI, HDFC, ICICI, AXIS, KOTAK, PNB, CANBNK, UNIONBK, INDUSB, YESBNK, IDFCBK, CITIBK, HSBC, BANK, BNK" // More bank names/abbr
+                val paymentIndicators = "UPI, PAY, PYMT, PAYTM, GPAY, PHONEPE, AMZPAY, MOBIKWIK, JUSPAY, RZRPAY, PAYU, BILLDESK, CARD, CRDT, DEBIT, WALLET" // Payment related
+                val negativeIndicators = "OFFER, LOAN, SALE, ADVT, PROMO, INSUR, POLICY, REWARD, ALERT, INFO, UPDATE, TEAM, SUPPORT, VERIFY, CODE, OTP, CARE, TICKET, QUERY, ASSIST, CLICK, VISIT, DEALS, SHOP, NEWS, JOB, VERIFICATION, AUTHENTICATION, DELIVERY, TRACKING" // More negative terms
+
+                // Refined Prompt
+                val prompt = """
+                Analyze ONLY the SMS sender ID provided: "$senderId"
+
+                **Context:**
+                * Common financial service identifiers in India often include terms like: [$knownBankIndicators, $paymentIndicators].
+                * Common non-financial identifiers often relate to: [$negativeIndicators].
+                * Sender IDs are typically short, often all-caps, sometimes with prefixes like XX- or suffixes like BK. Pure numbers are usually phone numbers, not financial IDs.
+
+                **Question:** Based ONLY on the sender ID "$senderId", is it highly likely to be from a financial institution (bank, credit card co), a major payment service (UPI, wallet, gateway), or specifically for sending transaction confirmations/alerts (NOT promotions or general info)?
+
+                **Instructions:**
+                * Focus SOLELY on the sender ID string itself.
+                * If the ID clearly matches common financial patterns/names (like AXISBK, VM-SBIUPI, GPAY, AMZPAY), answer "Yes".
+                * If the ID strongly suggests promotional, informational, verification, or non-financial services (like VM-SWIGGY, AD-OFFER, BL-BSNLIN, JD-RTRNDS, VERIFY), answer "No".
+                * If the ID is ambiguous or too generic to be certain (like INFO, UPDATE, short codes without clear context), answer "No".
+                * Answer ONLY with the single word "Yes" or "No".
+                """.trimIndent()
+
+                Log.v(TAG, "Sending sender classification prompt for: $senderId")
+                val response : GenerateContentResponse = generativeModel.generateContent(prompt) // Define type explicitly
+                val responseText = response.text?.trim()
+                Log.d(TAG, "Gemini classification response for '$senderId': $responseText")
+
+                // Parse the Response
+                val isFinancial = responseText.equals("Yes", ignoreCase = true)
+                Log.i(TAG, "Sender '$senderId' classified as Financial: $isFinancial")
+
+                isFinancial // Return true if response is "Yes"
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error calling Gemini API for sender classification: $senderId", e)
+                false // Default to false (non-financial) on error
+            }
+        }
+    }*/
+
+    // Inside GeminiMessageExtractor.kt
+
+    // --- NEW Function for Batch Sender ID Classification ---
+    suspend fun classifySenderIdBatch(senderIds: List<String>): List<String> {
+        if (generativeModel == null) {
+            Log.e(TAG, "Gemini model not initialized for batch classification.")
+            return emptyList()
+        }
+        if (senderIds.isEmpty()) {
+            return emptyList()
+        }
+
+        // Basic pre-filtering (already done in SenderListManager, but can be added here too)
+        val validSenderIds = senderIds.filter { it.length >= 5 && !it.all { c -> c.isDigit() || c == '+' } }
+        if (validSenderIds.isEmpty()) {
+            Log.d(TAG, "No valid sender IDs left after pre-filtering for batch.")
+            return emptyList()
+        }
+
+        val senderListString = validSenderIds.joinToString("\n") // Send one ID per line
+
+        return withContext(Dispatchers.IO) {
+            try {
+                // Context strings (same as single classification)
+                val knownBankIndicators = "SBI, HDFC, ICICI, AXIS, KOTAK, PNB, CANBNK, UNIONBK, INDUSB, YESBNK, IDFCBK, CITIBK, HSBC, BANK, BNK"
+                val paymentIndicators = "UPI, PAY, PYMT, PAYTM, GPAY, PHONEPE, AMZPAY, MOBIKWIK, JUSPAY, RZRPAY, PAYU, BILLDESK, CARD, CRDT, DEBIT, WALLET"
+                val negativeIndicators = "OFFER, SALE, PROMO, ALERT, VERIFY, CODE, OTP, TEAM, SUPPORT, VISIT, CLICK, DEALS, SHOP, NEWS, JOB, AUTH, DELIVERY, TRACK"
+
+                // --- Batch Prompt Design ---
+                val prompt = """
+                Analyze the following list of SMS sender IDs, one per line:
+                --- START LIST ---
+                $senderListString
+                --- END LIST ---
+
+                Context:
+                * Common financial service identifiers in India often include: [$knownBankIndicators, $paymentIndicators].
+                * Common non-financial identifiers often relate to: [$negativeIndicators].
+                * Financial IDs are typically short, often all-caps, sometimes with prefixes like XX- or suffixes like BK. Pure numbers are usually not financial IDs.
+
+                Task: Identify ALL sender IDs from the list above that are highly likely to be from a financial institution (bank, credit card co), a major payment service (UPI, wallet, gateway), or specifically for sending transaction confirmations/alerts.
+
+                Instructions:
+                * Focus SOLELY on the sender ID strings provided.
+                * Ignore IDs that are clearly promotional, informational, verification-related, or too ambiguous.
+                * Your output MUST be ONLY a JSON array string containing the sender IDs you identified as likely financial.
+                * Example Output: ["VA-SBIUPI", "AX-PAYTMB", "VK-HDFCBK", "GPAY"]
+                * If NO sender IDs from the list are likely financial, output an empty JSON array string: []
+                * Do NOT include any explanations, introductions, or markdown formatting like ```json. Just the JSON array string.
+                """.trimIndent()
+
+                Log.v(TAG, "Sending BATCH sender classification prompt for ${validSenderIds.size} IDs...")
+                val response: GenerateContentResponse = generativeModel.generateContent(prompt)
+                val responseText = response.text?.trim()
+                Log.d(TAG, "Gemini BATCH classification raw response: $responseText")
+
+                // --- Parse the JSON Array Response ---
+                if (responseText.isNullOrBlank()) {
+                    Log.w(TAG, "Gemini batch response was null or blank.")
+                    return@withContext emptyList<String>()
+                }
+
+                try {
+                    // Expecting response like ["ID1", "ID2", ...]
+                    val jsonArray = org.json.JSONArray(responseText)
+                    val financialList = mutableListOf<String>()
+                    for (i in 0 until jsonArray.length()) {
+                        val sender = jsonArray.optString(i)
+                        if (sender != null && sender.isNotEmpty()) {
+                            financialList.add(sender) // Add the sender identified by Gemini
+                        }
+                    }
+                    Log.i(TAG, "Parsed ${financialList.size} financial senders from Gemini batch response.")
+                    financialList // Return the parsed list
+
+                } catch (e: org.json.JSONException) {
+                    Log.e(TAG, "Error parsing Gemini batch JSON response: '$responseText'", e)
+                    // Attempt fallback parsing (e.g., comma-separated, newline-separated) if needed, or return empty
+                    // Example fallback (simple comma split, might be unreliable):
+                    // return responseText.split(",").map { it.trim().removeSurrounding("\"") }.filter { it.isNotEmpty() }
+                    emptyList<String>() // Return empty list on JSON parsing error
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error calling Gemini API for batch sender classification", e)
+                emptyList<String>() // Return empty list on API error
+            }
+        } // End withContext
+    } // End classifySenderIdBatch
+
+} // End class GeminiMessageExtractor
+

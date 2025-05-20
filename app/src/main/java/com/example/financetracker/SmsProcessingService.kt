@@ -109,10 +109,6 @@ class SmsProcessingService : Service() {
         return START_REDELIVER_INTENT
     }
 
-    // Replace the existing processMessage function in
-// FinanceTracker-master/app/src/main/java/com/example/financetracker/SmsProcessingService.kt
-// with this enhanced version.
-
     private fun processMessage(messageBody: String, sender: String, smsTimestamp: Long, startId: Int) {
         coroutineScope.launch {
             var shouldStopService = true
@@ -195,11 +191,6 @@ class SmsProcessingService : Service() {
         }
     } // End processMessage
 
-
-// Make sure the addTransactionToFirestore, showTransactionNotification,
-// showDetailsNeededNotification, and showFailureNotification functions exist
-// within SmsProcessingService or are accessible to it. // End processMessage
-
     private fun updateProcessingNotification(statusText: String) {
         val notification = NotificationCompat.Builder(this, SERVICE_CHANNEL_ID)
             .setContentTitle("Processing SMS")
@@ -273,9 +264,6 @@ class SmsProcessingService : Service() {
         }
     }
 
-    // In FinanceTracker-master/app/src/main/java/com/example/financetracker/SmsProcessingService.kt
-
-    // Inside showDetailsNeededNotification function:
     private fun showDetailsNeededNotification(transaction: Transaction, message: String, fullTransaction: Transaction) {
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP

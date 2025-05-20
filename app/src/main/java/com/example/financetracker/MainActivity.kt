@@ -1,8 +1,6 @@
 package com.example.financetracker
 
 import android.Manifest
-import androidx.transition.TransitionManager
-import androidx.transition.AutoTransition
 import android.app.AlertDialog
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -17,52 +15,50 @@ import android.provider.Telephony
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
+import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.transition.AutoTransition
+import androidx.transition.TransitionManager
 import com.example.financetracker.database.TransactionDatabase
 import com.example.financetracker.database.TransactionPattern
 import com.example.financetracker.database.entity.Transaction
+import com.example.financetracker.databinding.ActivityMainBinding
+import com.example.financetracker.repository.TransactionRepository
 import com.example.financetracker.ui.dialogs.TransactionDetailsDialog
+import com.example.financetracker.ui.screens.StatisticsScreen
+import com.example.financetracker.utils.CategoryUtils
+import com.example.financetracker.utils.GuestUserManager
 import com.example.financetracker.utils.MessageExtractor
+import com.example.financetracker.viewmodel.StatisticsViewModel
+import com.example.financetracker.viewmodel.StatisticsViewModelFactory
+import com.example.financetracker.viewmodel.TransactionStatistics
 import com.example.financetracker.viewmodel.TransactionViewModel
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.navigation.NavigationView
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.gson.Gson
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.FirebaseUser
-import com.google.firebase.firestore.FirebaseFirestore
-import androidx.appcompat.app.ActionBarDrawerToggle
-import com.google.android.material.navigation.NavigationView
-import com.example.financetracker.databinding.ActivityMainBinding
-import android.view.View
-import android.widget.ImageView
-import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.constraintlayout.widget.ConstraintLayout
-import androidx.constraintlayout.widget.ConstraintSet
-import androidx.interpolator.view.animation.FastOutSlowInInterpolator
-import com.example.financetracker.repository.TransactionRepository
-import com.example.financetracker.ui.screens.StatisticsScreen
-import com.example.financetracker.utils.CategoryUtils
-import com.example.financetracker.utils.GuestUserManager
-import com.example.financetracker.viewmodel.StatisticsViewModel
-import com.example.financetracker.viewmodel.StatisticsViewModelFactory
-import com.example.financetracker.viewmodel.TransactionStatistics
-import com.google.android.material.card.MaterialCardView
-import kotlinx.coroutines.flow.first
 import kotlin.math.abs
-import androidx.lifecycle.Observer // Add Observer import
-import java.util.Date
 
 class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetailsListener {
 
@@ -108,19 +104,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
         const val TRANSACTION_CHANNEL_ID = "TRANSACTION_CHANNEL"
         const val DETAILS_REQUIRED_CHANNEL_ID = "DETAILS_REQUIRED_CHANNEL"
-    }
-
-    private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        arrayOf(
-            Manifest.permission.RECEIVE_SMS,
-            Manifest.permission.READ_SMS,
-            Manifest.permission.POST_NOTIFICATIONS
-        )
-    } else {
-        arrayOf(
-            Manifest.permission.RECEIVE_SMS,
-            Manifest.permission.READ_SMS
-        )
     }
 
     private fun updateGuestModeBanner() {
@@ -195,70 +178,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
                 }
             }
         }
-
-    private fun addTransactionToFirestore(transaction: Transaction) {
-        // Get userId (either authenticated or guest)
-        val userId = auth.currentUser?.uid ?: GuestUserManager.getGuestUserId(applicationContext)
-        val isGuestMode = GuestUserManager.isGuestMode(userId)
-
-        Log.d(TAG, "Adding transaction: userId=$userId, guestMode=$isGuestMode")
-
-        // Ensure transaction has userId
-        transaction.userId = userId
-
-        // For guest users, just add to Room database
-        if (isGuestMode) {
-            lifecycleScope.launch {
-                transactionViewModel.addTransaction(transaction)
-            }
-            return
-        }
-
-        // For authenticated users, create a document reference first to get an ID
-        val docRef = firestore.collection("users")
-            .document(userId)
-            .collection("transactions")
-            .document()
-
-        // Get the document ID
-        val docId = docRef.id
-
-        // Set the document ID in the transaction
-        transaction.documentId = docId
-
-        // Create a map with all transaction data
-        val transactionMap = hashMapOf(
-            "id" to transaction.id,
-            "name" to transaction.name,
-            "amount" to transaction.amount,
-            "date" to transaction.date,
-            "category" to transaction.category,
-            "merchant" to transaction.merchant,
-            "description" to transaction.description,
-            "documentId" to docId,
-            "userId" to userId
-        )
-
-        // Save to Firestore
-        docRef.set(transactionMap)
-            .addOnSuccessListener {
-                Log.d(TAG, "Transaction added to Firestore with ID: $docId")
-
-                // Update local database with document ID
-                lifecycleScope.launch {
-                    transactionViewModel.updateTransaction(transaction)
-                }
-            }
-            .addOnFailureListener { e ->
-                Log.e(TAG, "Error adding transaction to Firestore", e)
-                Toast.makeText(this, "Error saving to cloud: ${e.message}", Toast.LENGTH_SHORT).show()
-
-                // Still save to local database even if Firestore fails
-                lifecycleScope.launch {
-                    transactionViewModel.addTransaction(transaction)
-                }
-            }
-    }
 
     private fun debugCategories() {
         val userId = auth.currentUser?.uid ?: "guest_user"
@@ -348,17 +267,17 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
 
         // Initialize views
-        statisticsCard = findViewById(R.id.statisticsCard)
+        /*statisticsCard = findViewById(R.id.statisticsCard)*/
         categoryStatsContainer = findViewById(R.id.categoryStatsContainer)
         expandCollapseIcon = findViewById(R.id.expandCollapseIcon)
 
         // Set initial collapsed height
-        setCollapsedHeight()
+        /*setCollapsedHeight()*/
 
         // Setup click listener for statistics card
-        statisticsCard.setOnClickListener {
+        /*statisticsCard.setOnClickListener {
             toggleStatisticsExpansion()
-        }
+        }*/
 
         // Initialize other views and setup
         setupView()
@@ -460,44 +379,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
             // Your existing SMS test implementation
 
-    }
-
-    private fun setupDrawerToggle() {
-        val toggle = ActionBarDrawerToggle(
-            this,
-            drawerLayout,
-            findViewById(R.id.toolbar),
-            R.string.navigation_drawer_open,
-            R.string.navigation_drawer_close
-        )
-        drawerLayout.addDrawerListener(toggle)
-        toggle.syncState()
-    }
-
-    private fun updateUI(user: FirebaseUser?) {
-        if (user == null) {
-            // Clear transactions from local database when user logs out
-            transactionViewModel.clearTransactions()
-
-            // Make sure to stop listening when logging out
-            transactionViewModel.stopListeningToTransactions()
-
-            // Redirect to login
-            val intent = Intent(this, LoginActivity::class.java)
-            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            startActivity(intent)
-            finish()
-        } else {
-            // User is logged in, only start listening if not already listening
-            transactionViewModel.startListeningToTransactions(user.uid)
-        }
-    }
-
-    private fun fetchUserTransactions(userId: String) {
-        Log.d(TAG, "Fetching transactions for user: $userId")
-
-        // Start listening for real-time updates
-        transactionViewModel.startListeningToTransactions(userId)
     }
 
     private fun requestNotificationPermission() {
@@ -685,13 +566,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         Log.d(TAG, "SMS receiver registered with action: ${Telephony.Sms.Intents.SMS_RECEIVED_ACTION}")
     }
 
-    /*private fun setupStatisticsButton() {
-        findViewById<Button>(R.id.statisticsButton).setOnClickListener {
-            val intent = Intent(this, StatisticsActivity::class.java)
-            startActivity(intent)
-        }
-    }*/
-
     private fun setupObservers() {
         transactionViewModel.transactions.observe(this) { transactions ->
             // Handle transactions if needed
@@ -817,8 +691,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         // dialog.isCancelable = false
         dialog.show(supportFragmentManager, "TransactionDetailsDialog")
     }
-
-
 
     override fun onDetailsEntered(merchant: String, category: String, saveAsPattern: Boolean) {
         // --- Keep your existing logic to update the *currentTransaction* ---
@@ -1018,7 +890,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
 
     // Replace your existing showLogoutConfirmationDialog method with this improved version
 
-
     private fun saveTransactionPattern(messageBody: String, merchant: String, category: String) {
         val pattern = TransactionPattern(messageBody, merchant, category)
         val prefs = getSharedPreferences("TransactionPatterns", Context.MODE_PRIVATE)
@@ -1032,7 +903,6 @@ class MainActivity : BaseActivity(), TransactionDetailsDialog.TransactionDetails
         Log.d(TAG, "Transaction pattern saved: $pattern")
         Toast.makeText(this, "Pattern saved for future transactions", Toast.LENGTH_SHORT).show()
     }
-
 
     override fun onDestroy() {
         super.onDestroy()

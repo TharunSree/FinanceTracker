@@ -49,11 +49,17 @@ class ManageSendersActivity : BaseActivityWithBack() {
         binding.sendersRecyclerView.adapter = senderAdapter
 
         setupDeleteButton()
+        setupToolbar()
         setupSelectAllButton() // <<< ADDED: Setup for the new button
         setupBackButtonInterceptor()
 
         Log.d(TAG, "Activity created, loading senders.")
         loadSenders()
+    }
+
+    private fun setupToolbar() {
+        setSupportActionBar(binding.toolbar)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
     }
 
     // --- Setup Functions ---
